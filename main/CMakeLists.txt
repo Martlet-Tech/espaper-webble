@@ -1,0 +1,10 @@
+idf_component_register(SRCS "blufi_example_main.c"
+                            "blufi_security.c"
+                            "blufi_init.c"
+			    "app/app.c"
+			    "lcd/comm.c"
+			    "lcd/EL133UF1.c"
+                    INCLUDE_DIRS "."
+			    	"app"
+			    	"lcd"
+			)
