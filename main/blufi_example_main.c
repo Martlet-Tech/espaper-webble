@@ -33,6 +33,9 @@
 
 #include "esp_blufi.h"
 
+#include "esp_netif.h"
+#include "lwip/inet.h"
+#include "lwip/sockets.h"
 #include "app.h"
 
 #define EXAMPLE_WIFI_CONNECTION_MAXIMUM_RETRY CONFIG_EXAMPLE_WIFI_CONNECTION_MAXIMUM_RETRY
@@ -430,6 +433,18 @@ static void example_event_callback(esp_blufi_cb_event_t event, esp_blufi_cb_para
     case ESP_BLUFI_EVENT_RECV_CUSTOM_DATA:
         BLUFI_INFO("Recv Custom Data %" PRIu32 "\n", param->custom_data.data_len);
         esp_log_buffer_hex("Custom Data", param->custom_data.data, param->custom_data.data_len);
+	if(param->custom_data.data_len == 2) {
+		if( ((param->custom_data.data)[0] == 'i') &&  ((param->custom_data.data)[1] == 'p') ){
+			BLUFI_INFO("require ip");
+
+			char ip_str[16];
+			esp_netif_ip_info_t ip_info;
+			esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+			esp_netif_get_ip_info(netif, &ip_info);
+			sprintf(ip_str, "%s", ip4addr_ntoa(&ip_info.ip));
+			esp_blufi_send_custom_data((uint8_t*)ip_str, sizeof(ip_str));
+		}
+	}
         break;
 	case ESP_BLUFI_EVENT_RECV_USERNAME:
         /* Not handle currently */
