@@ -239,12 +239,18 @@ void udp_broadcast_task(void *pvParameters)
 
 	while (1) {
 		if (udp_broadcasting) {
+			// get ip
 			esp_netif_ip_info_t ip_info;
 			esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
 			esp_netif_get_ip_info(netif, &ip_info);
 			sprintf(ip_str, "%s", ip4addr_ntoa(&ip_info.ip));
 
-			sprintf(message, "esp-epd-%s", ip_str);
+			// get MAC
+			uint8_t mac[6];					    // 用于存储 MAC 地址
+			esp_err_t err = esp_wifi_get_mac(WIFI_IF_STA, mac); // 获取 STA 模式的 MAC 地址
+
+			sprintf(message, "YESEPD-%s-%02X:%02X:%02X:%02X:%02X:%02X",
+				ip_str, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 			sendto(sock, message, strlen(message), 0, (struct sockaddr *)&broadcast_addr, sizeof(broadcast_addr));
 			ESP_LOGI("UDP Broadcast", "Broadcasting: %s", message);
 		}
@@ -286,7 +292,7 @@ void tcp_server_task(void *pvParameters)
 					break; // 连接关闭
 				}
 				rx_buffer[len] = 0; // 将接收到的数据作为字符串处理
-				ESP_LOGI("TCP Server", "Received: %s", rx_buffer);
+				ESP_LOGI("TCP Server", "Received: %d: %s", len, rx_buffer);
 			}
 
 			close(conn_sock);
