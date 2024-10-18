@@ -58,34 +58,6 @@ void app_start(void)
 	APP_INFO("after initepd\n");
 	//====================================================
 
-	// esp_netif_t *netif = esp_netif_create_default_wifi_sta();
-	esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
-
-	ESP_LOGI("WiFi", "Waiting for IP...");
-	while (1) {
-		char buff[32];
-
-		esp_netif_ip_info_t ip_info;
-		esp_netif_get_ip_info(netif, &ip_info);
-		if (ip_info.ip.addr != 0) {
-			ESP_LOGI("WiFi", "Connected with IP: %s", esp_ip4addr_ntoa(&ip_info.ip, buff, 32));
-			break; // Wi-Fi 已连接，退出等待循环
-		}
-		vTaskDelay(1000 / portTICK_PERIOD_MS);
-	}
-
-	// 启动 UDP 广播任务
-	xTaskCreate(udp_broadcast_task, "udp_broadcast", 4096, NULL, 5, NULL);
-
-	// 启动 TCP 服务器任务
-	xTaskCreate(tcp_server_task, "tcp_server", 4096, NULL, 5, NULL);
-
-	while (1) {
-		get_ip_address();
-		get_mac_address();
-		vTaskDelay(pdMS_TO_TICKS(2000));
-	}
-
 	//=============   Update EPD  ========================
 	while (1) {
 		EL133UF1_DisplayColor(BLACK, dst_image_buffer_m, dst_image_buffer_s);
