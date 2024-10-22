@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>File Upload</title>
+	<link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+	<h1>Upload File</h1>
+	<form action="/upload" method="post" enctype="multipart/form-data">
+		<input type="file" name="file" required>
+		<input type="submit" value="Upload">
+	</form>
+	<br>
+	<input type="file" id="file-input" accept="image/*">
+	<br>
+	<img id="image-frame" src="" alt="Your Image" />
+	<button id="upload-button" style="display: none;" onclick="sendImage()">Send</button>
+
+	<script>
+		const fileInput = document.getElementById('file-input');
+		const imageFrame = document.getElementById('image-frame');
+		const uploadButton = document.getElementById('upload-button');
+
+		fileInput.addEventListener('change', function () {
+			const file = fileInput.files[0];
+			if (file) {
+				const reader = new FileReader();
+				reader.onload = function (event) {
+					imageFrame.src = event.target.result;
+					imageFrame.style.display = 'block';
+					uploadButton.style.display = 'inline-block';
+					fileInput.style.display = 'none'; // Hide file input
+				};
+				reader.readAsDataURL(file);
+			}
+		});
+
+		function sendImage() {
+			const file = fileInput.files[0];
+			if (file) {
+				// Here you can implement the logic to send the image file
+				// using a form submission or an AJAX request.
+				alert('Image sent!');
+			}
+		}
+	</script>
+</body>
+
+</html>
