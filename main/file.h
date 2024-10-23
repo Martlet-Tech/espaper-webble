@@ -13,12 +13,14 @@
 #include "driver/sdmmc_host.h"
 #include "sdmmc_cmd.h"
 
-#define MOUNT_POINT "/sdcard"
+#define SDCARD_MOUNT_POINT "/sdcard"
+#define SPIFFS_MOUNT_POINT "/spiffs"
 #define EXAMPLE_MAX_CHAR_SIZE 64
 
 void init_spiffs(void);
 
-esp_err_t mount_sd_card(void);
-void sdmmc_card_test();
+esp_err_t sdcard_mount(void);
+esp_err_t sdcard_unmount(void);
+esp_err_t sdcard_test();
 
 #endif

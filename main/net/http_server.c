@@ -12,15 +12,13 @@
 // 假设使用 PSRAM 缓存，申请内存
 #define CHUNK_SIZE 512
 
-// #define FILE_UPLOAD_PATH "/spiffs/uploads/" // 上传文件的存储路径
-
 static const char *TAG = "http_server";
 
 /* 根路径处理函数 */
 esp_err_t index_get_handler(httpd_req_t *req)
 {
 	/* 打开 SPIFFS 中的 index.html 文件 */
-	FILE *f = fopen("/spiffs/index.html", "r");
+	FILE *f = fopen(SPIFFS_MOUNT_POINT "/index.html", "r");
 	if (f == NULL) {
 		ESP_LOGE(TAG, "无法打开 index.html 文件");
 		/* 发送404错误页面 */
@@ -35,15 +33,18 @@ esp_err_t index_get_handler(httpd_req_t *req)
 	while (fgets(line, line_buff_lenght, f) != NULL) {
 		httpd_resp_sendstr_chunk(req, line);
 		memset(line, 0, line_buff_lenght);
+
 		if ((line_num % 100) == 0) {
-			ESP_LOGI(TAG, "line: %d", line_num++);
+			ESP_LOGI(TAG, "line: %d", line_num);
 		}
+		line_num++;
 	}
 	heap_caps_free(line);
 
 	/* 发送完成并关闭文件 */
 	fclose(f);
 	httpd_resp_sendstr_chunk(req, NULL); // 发送完最后一块数据
+	ESP_LOGI(TAG, "Html send finish");
 	return ESP_OK;
 }
 
@@ -56,7 +57,7 @@ httpd_uri_t index_uri = { .uri = "/", // 根路径
 esp_err_t css_get_handler(httpd_req_t *req)
 {
 	/* 打开 SPIFFS 中的 index.html 文件 */
-	FILE *f = fopen("/spiffs/styles.css", "r");
+	FILE *f = fopen(SPIFFS_MOUNT_POINT "/styles.css", "r");
 	if (f == NULL) {
 		ESP_LOGE(TAG, "无法打开 index.html 文件");
 		/* 发送404错误页面 */
@@ -130,10 +131,9 @@ esp_err_t upload_post_handler(httpd_req_t *req)
 	int received;
 	size_t remaining_size = MAX_FILE_SIZE;
 
-	ESP_LOGI(TAG, "Free heap in SPIRAM: %d bytes",
-		 heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
-	ESP_LOGI(TAG, "Largest block of free heap in SPIRAM: %d bytes",
-		 heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM));
+	ESP_LOGI(TAG, "httpd_req_t *req->method= %d", req->method);
+	ESP_LOGI(TAG, "httpd_req_t *req.uri= %s", req->uri);
+	ESP_LOGI(TAG, "httpd_req_t *req.content_len= %d", req->content_len);
 
 	// 初始化 PSRAM 缓存
 	psram_buffer_t *psram_buf = init_psram_buffer(MAX_FILE_SIZE);
@@ -161,6 +161,7 @@ esp_err_t upload_post_handler(httpd_req_t *req)
 		printf(".");
 		fflush(stdout); // 手动刷新缓冲区
 	}
+	printf("\r\n");
 
 	if (received < 0) {
 		ESP_LOGE(TAG, "File upload failed");
@@ -168,31 +169,64 @@ esp_err_t upload_post_handler(httpd_req_t *req)
 		return ESP_FAIL;
 	}
 
+	// find file start
+	const unsigned char *delimiter = (unsigned char *)"\x0d\x0a\x0d\x0a";
+	const void *pos = memmem(psram_buf->data, 1024, delimiter, 4);
+	if (pos == NULL) {
+		ESP_LOGE(TAG, "File received has fault");
+	}
+	ptrdiff_t offset_file_start = (const unsigned char *)pos -
+				      (const unsigned char *)(psram_buf->data);
+	offset_file_start += 4;
+	ESP_LOGI(TAG, "File offset = %d", (int)offset_file_start);
+
+	// find file ends
+	const char *end_string = "------WebKitFormBoundary";
+	size_t search_size = req->content_len > 2048 ?
+				     2048 :
+				     req->content_len; // Adjust search size
+
+	pos = memmem(psram_buf->data + req->content_len - search_size,
+		     search_size, end_string, strlen(end_string));
+	ptrdiff_t offset_file_end = (const unsigned char *)pos -
+				    (const unsigned char *)(psram_buf->data);
+	offset_file_end -= 2;
+	ESP_LOGI(TAG, "File offset = %d", (int)offset_file_end);
+
+	// Send success response in JSON format
+	httpd_resp_set_type(req, "application/json");
+	const char *resp_str = "{\"code\":200, \"msg\":\"Upload complete.\"}";
+	httpd_resp_send(req, resp_str, strlen(resp_str));
+
 	ESP_LOGI(TAG, "File upload successful, total size: %zu bytes",
 		 psram_buf->offset);
 
 	// 在这里可以对缓存的数据进行处理，比如转存到 SD 卡或其他操作
 	// 创建并打开文件
-	FILE *f = fopen(MOUNT_POINT "/save.bin", "wb+");
+	FILE *f = fopen(SDCARD_MOUNT_POINT "/save.bin", "wb+");
 	if (f == NULL) {
 		ESP_LOGE("SDMMC", "Failed to open file for writing");
-		esp_vfs_fat_sdmmc_unmount();
+		sdcard_unmount();
 		return ESP_FAIL;
-	}
-
-	unsigned char b[10];
-	for (int i = 0; i < 10; i++) {
-		b[i] = 0xff;
 	}
 
 	// 写入内容到文件
 	fwrite(psram_buf->data, sizeof(char), psram_buf->offset, f);
 	fclose(f);
-	// TODO: 存储到 SD 卡或其他地方
 
-	// 响应客户端
-	httpd_resp_sendstr(req,
-			   "File uploaded and stored in PSRAM successfully!");
+	f = fopen(SDCARD_MOUNT_POINT "/upload.png", "wb+");
+	if (f == NULL) {
+		ESP_LOGE("SDMMC", "Failed to open file for writing");
+		sdcard_unmount();
+		return ESP_FAIL;
+	}
+
+	// 写入内容到文件
+	fwrite(psram_buf->data + offset_file_start, sizeof(char),
+	       offset_file_end - offset_file_start, f);
+	fclose(f);
+
+	// TODO: 进度条
 
 	// 释放 PSRAM 缓存
 	free_psram_buffer(psram_buf);
@@ -204,29 +238,6 @@ httpd_uri_t upload_uri = { .uri = "/upload",
 			   .method = HTTP_POST,
 			   .handler = upload_post_handler,
 			   .user_ctx = NULL };
-
-#if 0
-esp_err_t get_html_handler(httpd_req_t *req)
-{
-	ESP_LOGI(TAG, "Callling get_html_handler");
-	FILE *f = fopen("/spiffs/index.html", "r");
-	if (!f) {
-		ESP_LOGE(TAG, "Failed to open file for reading");
-		httpd_resp_send_404(req);
-		return ESP_FAIL;
-	}
-
-	char buf[1024];
-	size_t read_len;
-	while ((read_len = fread(buf, 1, sizeof(buf), f)) > 0) {
-		httpd_resp_send_chunk(req, buf, read_len);
-	}
-
-	fclose(f);
-	httpd_resp_send_chunk(req, NULL, 0);
-	return ESP_OK;
-}
-#endif
 
 // 启动 HTTP 服务器
 void start_http_server()

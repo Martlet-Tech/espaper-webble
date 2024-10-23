@@ -414,7 +414,8 @@
           // 创建FormData对象
           var formData = new FormData();
           // 将Blob添加到FormData中，可以指定文件名
-          formData.append("file", blob);
+          //formData.append("file", blob);
+          formData.append("file", new File([blob], "upload.png"));
           formData.append("type", queryParams.type);
           formData.append("deviceId", queryParams.deviceId);
           formData.append("labelMacList", macList);

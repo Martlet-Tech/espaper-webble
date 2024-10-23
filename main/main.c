@@ -67,9 +67,12 @@ void app_main(void)
 	// 挂载 SPIFFS
 	init_spiffs();
 
-	mount_sd_card();
+	sdcard_mount();
 
-	sdmmc_card_test();
+	ret = sdcard_test();
+	if (ret != ESP_OK) {
+		// TODO show sdcard error
+	}
 
 	wifi_init_softap();
 
@@ -78,11 +81,7 @@ void app_main(void)
 	// 启动 HTTP 服务器和其他初始化
 	start_http_server();
 
-	sdmmc_card_test();
-
 	app_start();
-
-	sdmmc_card_test();
 
 	ESP_LOGI(TAG, "infini loop");
 	while (1) {

@@ -22,6 +22,8 @@
 
 static const char *TAG = "file";
 
+sdmmc_card_t *card;
+
 /* 打印文件列表 */
 void list_files(const char *base_path)
 {
@@ -42,7 +44,7 @@ void init_spiffs(void)
 {
 	// 配置 SPIFFS
 	esp_vfs_spiffs_conf_t conf = {
-		.base_path = "/spiffs", // 挂载路径
+		.base_path = SPIFFS_MOUNT_POINT, // 挂载路径
 		.partition_label = NULL, // 默认使用 spiffs 分区
 		.max_files = 5, // 最大打开文件数量
 		.format_if_mount_failed = true // 如果挂载失败，则格式化
@@ -76,44 +78,7 @@ void init_spiffs(void)
 	list_files("/spiffs");
 }
 
-static esp_err_t s_example_write_file(const char *path, char *data)
-{
-	ESP_LOGI(TAG, "Opening file %s", path);
-	FILE *f = fopen(path, "w");
-	if (f == NULL) {
-		ESP_LOGE(TAG, "Failed to open file for writing");
-		return ESP_FAIL;
-	}
-	fprintf(f, data);
-	fclose(f);
-	ESP_LOGI(TAG, "File written");
-
-	return ESP_OK;
-}
-
-static esp_err_t s_example_read_file(const char *path)
-{
-	ESP_LOGI(TAG, "Reading file %s", path);
-	FILE *f = fopen(path, "r");
-	if (f == NULL) {
-		ESP_LOGE(TAG, "Failed to open file for reading");
-		return ESP_FAIL;
-	}
-	char line[EXAMPLE_MAX_CHAR_SIZE];
-	fgets(line, sizeof(line), f);
-	fclose(f);
-
-	// strip newline
-	char *pos = strchr(line, '\n');
-	if (pos) {
-		*pos = '\0';
-	}
-	ESP_LOGI(TAG, "Read from file: '%s'", line);
-
-	return ESP_OK;
-}
-
-esp_err_t mount_sd_card()
+esp_err_t sdcard_mount()
 {
 	esp_err_t ret;
 
@@ -122,8 +87,8 @@ esp_err_t mount_sd_card()
 		.max_files = 5,
 		.allocation_unit_size = 16 * 1024
 	};
-	sdmmc_card_t *card;
-	const char mount_point[] = MOUNT_POINT;
+
+	const char mount_point[] = SDCARD_MOUNT_POINT;
 	sdmmc_host_t host = SDMMC_HOST_DEFAULT();
 	sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
 	slot_config.width = 4;
@@ -159,16 +124,22 @@ esp_err_t mount_sd_card()
 	return ESP_OK;
 }
 
-#define FILE_NAME "/test.txt"
-
-void sdmmc_card_test()
+esp_err_t sdcard_unmount()
 {
+	return esp_vfs_fat_sdcard_unmount(SDCARD_MOUNT_POINT, card);
+}
+
+esp_err_t sdcard_test()
+{
+	const char TAG[] = "sdmmc_card_test";
+	const char file_path[] = SDCARD_MOUNT_POINT "/test.txt";
+
 	// 创建并打开文件
-	FILE *f = fopen(MOUNT_POINT FILE_NAME, "w+");
+	FILE *f = fopen(file_path, "w+");
 	if (f == NULL) {
-		ESP_LOGE("SDMMC", "Failed to open file for writing");
-		esp_vfs_fat_sdmmc_unmount();
-		return;
+		ESP_LOGE(TAG, "Failed to open file for writing");
+		sdcard_unmount();
+		return ESP_FAIL;
 	}
 
 	// 写入内容到文件
@@ -176,11 +147,11 @@ void sdmmc_card_test()
 	fclose(f);
 
 	// 打开文件进行读取
-	f = fopen(MOUNT_POINT FILE_NAME, "r");
+	f = fopen(file_path, "r");
 	if (f == NULL) {
-		ESP_LOGE("SDMMC", "Failed to open file for reading");
-		esp_vfs_fat_sdmmc_unmount();
-		return;
+		ESP_LOGE(TAG, "Failed to open file for reading");
+		sdcard_unmount();
+		return ESP_FAIL;
 	}
 
 	// 读取文件内容
@@ -189,8 +160,10 @@ void sdmmc_card_test()
 	printf("Read from file: %s", line);
 	fclose(f);
 
-	// 卸载SD卡文件系统
-	//esp_vfs_fat_sdmmc_unmount();
+	if (unlink(file_path) != 0) {
+		ESP_LOGE(TAG, "Failed to delete file: %s", file_path);
+	}
 
-	ESP_LOGI("SDMMC", "SD card test done.");
+	ESP_LOGI(TAG, "OK");
+	return ESP_OK;
 }
