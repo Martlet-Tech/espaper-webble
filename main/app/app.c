@@ -4,6 +4,9 @@
 #include "comm.h"
 #include "pindefine.h"
 #include "status.h"
+#include "util.h"
+#include "img_prcs.h"
+#include "file.h"
 
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
@@ -42,57 +45,26 @@ static const char *TAG = "APP";
 
 void app_start(void)
 {
-	APP_INFO("%s\n", __func__);
-	ESP_LOGI(TAG, "Free heap in SPIRAM: %d bytes",
-		 heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
-	ESP_LOGI(TAG, "Largest block of free heap in SPIRAM: %d bytes",
-		 heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM));
-
-	dst_image_buffer_m =
-		(uint8_t *)heap_caps_malloc(DST_FRAME_SIZE, MALLOC_CAP_SPIRAM);
-	dst_image_buffer_s =
-		(uint8_t *)heap_caps_malloc(DST_FRAME_SIZE, MALLOC_CAP_SPIRAM);
-
-	ESP_LOGI(TAG, "Free heap in SPIRAM: %d bytes",
-		 heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
-	ESP_LOGI(TAG, "Largest block of free heap in SPIRAM: %d bytes",
-		 heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM));
+	ESP_LOGI(TAG, "start");
 
 	//=============   EPD Initial ========================
-	initEPD();
-	APP_INFO("after initepd\n");
+	EL133UF1_Init();
+	ESP_LOGI(TAG, "after initepd");
+
 	//====================================================
-	EL133UF1_DisplayColor(GREEN, dst_image_buffer_m, dst_image_buffer_s);
-	vTaskDelay(5000 / portTICK_PERIOD_MS);
 
-	//=============   Update EPD  ========================
-	/*while (1) {
-		EL133UF1_DisplayColor(BLACK, dst_image_buffer_m, dst_image_buffer_s);
-		vTaskDelay(5000 / portTICK_PERIOD_MS);
+	//dst_image_buffer_m =
+	//	(uint8_t *)heap_caps_malloc(DST_FRAME_SIZE, MALLOC_CAP_SPIRAM);
+	//dst_image_buffer_s =
+	//	(uint8_t *)heap_caps_malloc(DST_FRAME_SIZE, MALLOC_CAP_SPIRAM);
+	//EL133UF1_DisplayColor(WHITE, dst_image_buffer_m, dst_image_buffer_s);
+	//heap_caps_free(dst_image_buffer_m);
+	//heap_caps_free(dst_image_buffer_s);
+	//vTaskDelay(1000 / portTICK_PERIOD_MS);
 
-		EL133UF1_DisplayColor(WHITE, dst_image_buffer_m, dst_image_buffer_s);
-		vTaskDelay(5000 / portTICK_PERIOD_MS);
+	display_jpg_file(SDCARD_MOUNT_POINT "/upload.jpg");
 
-		EL133UF1_DisplayColor(RED, dst_image_buffer_m, dst_image_buffer_s);
-		vTaskDelay(5000 / portTICK_PERIOD_MS);
-
-		EL133UF1_DisplayColor(GREEN, dst_image_buffer_m, dst_image_buffer_s);
-		vTaskDelay(5000 / portTICK_PERIOD_MS);
-
-		EL133UF1_DisplayColor(BLUE, dst_image_buffer_m, dst_image_buffer_s);
-		vTaskDelay(5000 / portTICK_PERIOD_MS);
-
-		EL133UF1_DisplayColor(YELLOW, dst_image_buffer_m, dst_image_buffer_s);
-		vTaskDelay(5000 / portTICK_PERIOD_MS);
-	}*/
-
-	heap_caps_free(dst_image_buffer_m);
-	heap_caps_free(dst_image_buffer_s);
-
-	ESP_LOGI(TAG, "Free heap in SPIRAM: %d bytes",
-		 heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
-	ESP_LOGI(TAG, "Largest block of free heap in SPIRAM: %d bytes",
-		 heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM));
+	show_ram_space("end of app");
 }
 
 void app_gpio_initial(void)
@@ -116,7 +88,7 @@ void app_gpio_initial(void)
 	}
 
 	spi_device_interface_config_t dev_config_0 = {
-		.clock_speed_hz = 12000000,
+		.clock_speed_hz = 10000000,
 		.mode = 0,
 		.spics_io_num = -1,
 		.queue_size = 7,
@@ -157,9 +129,8 @@ void app_gpio_initial(void)
 
 void app_error(void)
 {
-	APP_INFO("APP error\n");
-
 	while (1) {
+		ESP_LOGE(TAG, "ERROR");
 		vTaskDelay(1000);
 	}
 }

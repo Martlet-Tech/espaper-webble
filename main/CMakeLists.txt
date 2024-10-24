@@ -1,15 +1,18 @@
 idf_component_register(
 	SRCS 		"main.c"
 			"file.c"
+			"util.c"
 			"app/app.c"
 			"lcd/comm.c"
 			"lcd/EL133UF1.c"
 			"net/ap.c"
 			"net/http_server.c"
+			"img_prcs/img_prcs.c"
         INCLUDE_DIRS 	"."
 			"app"
 			"lcd"
 			"net"
 			"web"
+			"img_prcs"
 	# EMBED_FILES 	"web/favicon.ico" "web/upload_script.html"
 )

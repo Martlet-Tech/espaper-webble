@@ -22,5 +22,6 @@ void init_spiffs(void);
 esp_err_t sdcard_mount(void);
 esp_err_t sdcard_unmount(void);
 esp_err_t sdcard_test();
+uint8_t *SD_MMC_ReadFileToPsram(const char *path, uint32_t *file_size);
 
 #endif

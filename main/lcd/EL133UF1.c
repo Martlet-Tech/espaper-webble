@@ -81,6 +81,7 @@ void checkBusyHigh(void) // If BUSYN=0 then waiting
 			fflush(stdout); // 手动刷新缓冲区
 		}
 	};
+	printf("\r\n");
 }
 
 void checkBusyLow(void) // If BUSYN=1 then waiting
@@ -112,7 +113,7 @@ void epdHardwareReset(void)
 	delayms(30);
 }
 
-void initEPD(void)
+void EL133UF1_Init(void)
 {
 	setPinCsAll(GPIO_HIGH);
 	ESP_LOGI(TAG, "after cs all high\n");
@@ -182,7 +183,7 @@ void EL133UF1_Update(void)
 	EPD_IO_WriteCommandData_2CH(POF, POF_V, sizeof(POF_V),
 				    CS_MASK_MASTER_SLAVE);
 
-	ESP_LOGI(TAG, "\nUpdate Finish");
+	ESP_LOGI(TAG, "Update Finish");
 }
 
 void EL133UF1_DisplayFrame(const unsigned char *frame_buffer_m,
@@ -217,4 +218,18 @@ void EL133UF1_DisplayColor(unsigned char color, unsigned char *frame_buffer_m,
 	}
 	ESP_LOGI(TAG, "EL133UF1_DisplayColor Ready.");
 	EL133UF1_DisplayFrame(frame_buffer_m, frame_buffer_s);
+}
+
+void EL133UF1_Sleep(void)
+{
+	// Serial.println("EL133UF1_Sleep.");
+}
+
+int EL133UF1_Deinit(void)
+{
+	//epd_io.EPD_IO_Power_Off();
+	// Serial.println("EL133UF1 Power Off.");
+	//epd_io.EPD_IO_Deinitialize();
+	// Serial.println("EL133UF1 Deinitialize.");
+	return 0;
 }

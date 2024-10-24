@@ -400,8 +400,8 @@
     function submit(canvas) {
       const queryParams = getQueryParams();
       // 指定导出的图片类型和质量
-      var type = "image/png";
-      var quality = 1; // 0 到 1 之间的值，控制JPEG图片的质量
+      var type = "image/jpeg";
+      var quality = 0.9; // 0 到 1 之间的值，控制JPEG图片的质量
 
       // 调用 toBlob 方法并传入回调函数
       canvas.toBlob(
@@ -415,10 +415,10 @@
           var formData = new FormData();
           // 将Blob添加到FormData中，可以指定文件名
           //formData.append("file", blob);
-          formData.append("file", new File([blob], "upload.png"));
+          formData.append("file", new File([blob], "upload.jpg"));
           formData.append("type", queryParams.type);
-          formData.append("deviceId", queryParams.deviceId);
-          formData.append("labelMacList", macList);
+          //formData.append("deviceId", queryParams.deviceId);
+          //formData.append("labelMacList", macList);
 
           // 使用XMLHttpRequest或fetch API上传图片
           var xhr = new XMLHttpRequest();

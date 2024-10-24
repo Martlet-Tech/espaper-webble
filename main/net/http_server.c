@@ -8,11 +8,15 @@
 #include "esp_vfs_fat.h"
 #include "sdmmc_cmd.h"
 #include "file.h"
+#include "util.h"
+#include "img_prcs.h"
 
 // 假设使用 PSRAM 缓存，申请内存
 #define CHUNK_SIZE 512
 
 static const char *TAG = "http_server";
+
+esp_err_t display_jpg_file(const char *fn);
 
 /* 根路径处理函数 */
 esp_err_t index_get_handler(httpd_req_t *req)
@@ -182,8 +186,8 @@ esp_err_t upload_post_handler(httpd_req_t *req)
 
 	// find file ends
 	const char *end_string = "------WebKitFormBoundary";
-	size_t search_size = req->content_len > 2048 ?
-				     2048 :
+	size_t search_size = req->content_len > 1024 ?
+				     1024 :
 				     req->content_len; // Adjust search size
 
 	pos = memmem(psram_buf->data + req->content_len - search_size,
@@ -214,7 +218,7 @@ esp_err_t upload_post_handler(httpd_req_t *req)
 	fwrite(psram_buf->data, sizeof(char), psram_buf->offset, f);
 	fclose(f);
 
-	f = fopen(SDCARD_MOUNT_POINT "/upload.png", "wb+");
+	f = fopen(SDCARD_MOUNT_POINT "/upload.jpg", "wb+");
 	if (f == NULL) {
 		ESP_LOGE("SDMMC", "Failed to open file for writing");
 		sdcard_unmount();
@@ -230,6 +234,8 @@ esp_err_t upload_post_handler(httpd_req_t *req)
 
 	// 释放 PSRAM 缓存
 	free_psram_buffer(psram_buf);
+
+	display_jpg_file(SDCARD_MOUNT_POINT "/upload.jpg");
 
 	return ESP_OK;
 }

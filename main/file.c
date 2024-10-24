@@ -167,3 +167,70 @@ esp_err_t sdcard_test()
 	ESP_LOGI(TAG, "OK");
 	return ESP_OK;
 }
+
+uint8_t *SD_MMC_ReadFileToPsram(const char *path, uint32_t *file_size)
+{
+	/*
+	File file = SD_MMC.open(path);
+	size_t len = 0;
+	uint8_t *image_buffer = NULL;
+	if (file) {
+		len = file.size();
+		//分配PSRAM内存用于存储图像。
+		image_buffer =
+			(uint8_t *)(heap_caps_malloc(len, MALLOC_CAP_SPIRAM));
+		if (image_buffer == NULL) {
+			Serial.println(
+				"DownloadFile Failed, due to heap_caps_malloc failure.");
+			return NULL;
+		}
+
+		file.read(image_buffer, len);
+
+		file.close();
+		*file_size = len;
+		return image_buffer;
+	} else {
+		Serial.println("Failed to open file for reading");
+		return NULL;
+	}
+	*/
+
+	// 打开文件
+	FILE *file = fopen(path, "r");
+	if (file == NULL) {
+		ESP_LOGE("SD_MMC", "Failed to open file for reading");
+		return NULL;
+	}
+
+	// 获取文件大小
+	fseek(file, 0, SEEK_END);
+	long len = ftell(file);
+	fseek(file, 0, SEEK_SET);
+
+	// 分配PSRAM内存用于存储图像
+	uint8_t *image_buffer = heap_caps_malloc(len, MALLOC_CAP_SPIRAM);
+	if (image_buffer == NULL) {
+		ESP_LOGE("SD_MMC", "heap_caps_malloc failed");
+		fclose(file);
+		return NULL;
+	}
+
+	// 读取文件到PSRAM
+	size_t bytesRead = fread(image_buffer, 1, len, file);
+	if (bytesRead != len) {
+		ESP_LOGE("SD_MMC", "File read failed");
+		heap_caps_free(image_buffer);
+		fclose(file);
+		return NULL;
+	}
+
+	// 关闭文件
+	fclose(file);
+
+	if (file_size != NULL) {
+		*file_size = len;
+	}
+
+	return image_buffer;
+}

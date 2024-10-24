@@ -46,7 +46,8 @@
 #define NOT_FIRST_DATA_PACKET 0
 
 // Image buffer for sending image
-#define EPD_IMAGE_DATA_BUFFER 480000 // MCU RAM Size (800*720/2) reserve for one driver IC
+#define EPD_IMAGE_DATA_BUFFER \
+	480000 // MCU RAM Size (800*720/2) reserve for one driver IC
 
 #endif // #ifndef __EL133UF1_H__
 
@@ -55,7 +56,7 @@
 #define EPD_HEIGHT 1600
 // EL133UF1，有两个CS(Frame)每个字节包含两个像素，每个像素4bit
 #define EPD_IMAGE_SIZE (EPD_WIDTH * EPD_HEIGHT / 2) // 960,000
-#define EPD_FRAME_SIZE (EPD_IMAGE_SIZE / 2)	    // 480,000
+#define EPD_FRAME_SIZE (EPD_IMAGE_SIZE / 2) // 480,000
 
 #ifdef __EL133UF1_C__
 #define __EL133UF1_EXTERN__ EXT_RAM_BSS_ATTR
@@ -65,20 +66,26 @@
 
 __EL133UF1_EXTERN__ unsigned char epdImageDataBuffer[EPD_IMAGE_DATA_BUFFER];
 
-
-/*__EL133UF1_EXTERN__*/ void epdHardwareReset(void);
-/*__EL133UF1_EXTERN__*/ void setPinCsAll(unsigned int setLevel);
-/*__EL133UF1_EXTERN__*/ void setPinCs(unsigned char csNumber, unsigned int setLevel);
-/*__EL133UF1_EXTERN__*/ void checkBusyHigh(void);
-/*__EL133UF1_EXTERN__*/ void checkBusyLow(void);
-/*__EL133UF1_EXTERN__*/ void initEPD(void);
-/*__EL133UF1_EXTERN__*/ void writeEpd(unsigned char epdCommand, unsigned char *epdData, unsigned int epdDataLength);
-/*__EL133UF1_EXTERN__*/ void readEpd(unsigned char epdCommand, unsigned char *epdData, unsigned int epdDataLength);
-/*__EL133UF1_EXTERN__*/ void writeEpdCommand(unsigned char epdCommand);
-/*__EL133UF1_EXTERN__*/ void writeEpdData(unsigned char *epdData, unsigned int epdDataLength);
-/*__EL133UF1_EXTERN__*/ void epdDisplay(void);
-/*__EL133UF1_EXTERN__*/ void epdDisplayColor(unsigned char colorSelect);
-/*__EL133UF1_EXTERN__*/ void epdDisplayColorBar(void);
-/*__EL133UF1_EXTERN__*/ void writeEpdImage(unsigned char csx, unsigned char const *imageData, unsigned long imageDataLength);
-
-void EL133UF1_DisplayColor(unsigned char color, unsigned char *frame_buffer_m, unsigned char *frame_buffer_s);
+void epdHardwareReset(void);
+void setPinCsAll(unsigned int setLevel);
+void setPinCs(unsigned char csNumber, unsigned int setLevel);
+void checkBusyHigh(void);
+void checkBusyLow(void);
+void EL133UF1_Init(void);
+void writeEpd(unsigned char epdCommand, unsigned char *epdData,
+	      unsigned int epdDataLength);
+void readEpd(unsigned char epdCommand, unsigned char *epdData,
+	     unsigned int epdDataLength);
+void writeEpdCommand(unsigned char epdCommand);
+void writeEpdData(unsigned char *epdData, unsigned int epdDataLength);
+void epdDisplay(void);
+void epdDisplayColor(unsigned char colorSelect);
+void epdDisplayColorBar(void);
+void writeEpdImage(unsigned char csx, unsigned char const *imageData,
+		   unsigned long imageDataLength);
+void EL133UF1_DisplayFrame(const unsigned char *frame_buffer_m,
+			   const unsigned char *frame_buffer_s);
+void EL133UF1_DisplayColor(unsigned char color, unsigned char *frame_buffer_m,
+			   unsigned char *frame_buffer_s);
+void EL133UF1_Sleep(void);
+int EL133UF1_Deinit(void);
