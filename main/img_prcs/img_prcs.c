@@ -90,7 +90,10 @@ esp_err_t display_jpg_file(const char *filename)
 	free(org_image_buffer);
 	show_ram_space("after free org_image_buffer");
 
-	reorder_array(index_buffer, outimg.width, outimg.height);
+	if ((outimg.width == EPD_HEIGHT) && (outimg.height == EPD_WIDTH)) {
+		ESP_LOGI(TAG, "Image need rotation");
+		reorder_array(index_buffer, outimg.width, outimg.height);
+	}
 
 	dst_image_buffer_m =
 		(uint8_t *)heap_caps_malloc(DST_FRAME_SIZE, MALLOC_CAP_SPIRAM);

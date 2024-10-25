@@ -62,7 +62,7 @@ void app_start(void)
 	//heap_caps_free(dst_image_buffer_s);
 	//vTaskDelay(1000 / portTICK_PERIOD_MS);
 
-	display_jpg_file(SDCARD_MOUNT_POINT "/upload.jpg");
+	//display_jpg_file(SDCARD_MOUNT_POINT "/upload.jpg");
 
 	show_ram_space("end of app");
 }

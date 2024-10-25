@@ -10,17 +10,85 @@
 #include "file.h"
 #include "util.h"
 #include "img_prcs.h"
-
-// 假设使用 PSRAM 缓存，申请内存
-#define CHUNK_SIZE 512
+#include "esp_timer.h"
+#include "esp_event.h"
 
 static const char *TAG = "http_server";
 
-esp_err_t display_jpg_file(const char *fn);
+static char *html_cache = NULL; // PSRAM 中的缓存指针
+static size_t html_cache_size = 0; // 缓存的大小
+static esp_timer_handle_t cache_timer = NULL; // 定时器句柄
+
+void cache_timer_callback(void *arg);
+void init_cache_timer();
+void reset_cache_timer();
 
 /* 根路径处理函数 */
 esp_err_t index_get_handler(httpd_req_t *req)
 {
+	// 如果 HTML 缓存存在，直接返回缓存内容
+	if (html_cache != NULL) {
+		ESP_LOGI(TAG, "Serving HTML from PSRAM cache.");
+		httpd_resp_send(req, html_cache, html_cache_size);
+		reset_cache_timer(); // 重置定时器
+		return ESP_OK;
+	}
+
+	// 否则，读取文件并缓存
+	FILE *f = fopen(SPIFFS_MOUNT_POINT "/index.html", "r");
+	if (f == NULL) {
+		ESP_LOGE(TAG, "Unable to open index.html file.");
+		httpd_resp_send_404(req);
+		return ESP_FAIL;
+	}
+
+	fseek(f, 0, SEEK_END);
+	size_t file_size = ftell(f);
+	fseek(f, 0, SEEK_SET);
+
+	html_cache =
+		heap_caps_malloc(file_size, MALLOC_CAP_SPIRAM); // 分配 PSRAM
+	if (html_cache == NULL) {
+		ESP_LOGE(TAG, "Failed to allocate memory for HTML cache.");
+		fclose(f);
+		httpd_resp_send_500(req);
+		return ESP_FAIL;
+	}
+	show_ram_space("index_get_handler");
+
+	fread(html_cache, 1, file_size, f); // 读取文件到缓存
+	fclose(f);
+
+	html_cache_size = file_size; // 保存缓存大小
+	ESP_LOGI(TAG, "Html loaded into PSRAM, size: %d", file_size);
+
+	httpd_resp_send(req, html_cache, html_cache_size); // 发送响应
+
+	init_cache_timer(); // 初始化定时器
+	reset_cache_timer(); // 启动定时器
+
+	return ESP_OK;
+
+#if 0
+	// 如果 html_buffer 为空，说明文件还没有加载
+	if (html_buffer == NULL) {
+		ESP_LOGE(TAG, "HTML buffer is empty. Cannot serve the file.");
+		//httpd_resp_send_404(req);
+		load_html_to_psram();
+		//return ESP_FAIL;
+	}
+
+	// 从缓存中发送文件内容到客户端
+	esp_err_t ret = httpd_resp_send(req, html_buffer, html_length);
+	if (ret == ESP_OK) {
+		ESP_LOGI(TAG, "Html served successfully");
+	} else {
+		ESP_LOGE(TAG, "Error sending HTML");
+	}
+
+	return ret;
+#endif
+#if 0
 	/* 打开 SPIFFS 中的 index.html 文件 */
 	FILE *f = fopen(SPIFFS_MOUNT_POINT "/index.html", "r");
 	if (f == NULL) {
@@ -50,6 +118,7 @@ esp_err_t index_get_handler(httpd_req_t *req)
 	httpd_resp_sendstr_chunk(req, NULL); // 发送完最后一块数据
 	ESP_LOGI(TAG, "Html send finish");
 	return ESP_OK;
+#endif
 }
 
 httpd_uri_t index_uri = { .uri = "/", // 根路径
@@ -174,8 +243,8 @@ esp_err_t upload_post_handler(httpd_req_t *req)
 	}
 
 	// find file start
-	const unsigned char *delimiter = (unsigned char *)"\x0d\x0a\x0d\x0a";
-	const void *pos = memmem(psram_buf->data, 1024, delimiter, 4);
+	const unsigned char *start_string = (unsigned char *)"\x0d\x0a\x0d\x0a";
+	const void *pos = memmem(psram_buf->data, 1024, start_string, 4);
 	if (pos == NULL) {
 		ESP_LOGE(TAG, "File received has fault");
 	}
@@ -197,17 +266,27 @@ esp_err_t upload_post_handler(httpd_req_t *req)
 	offset_file_end -= 2;
 	ESP_LOGI(TAG, "File offset = %d", (int)offset_file_end);
 
+	if ((offset_file_end < offset_file_start) || (offset_file_start < 0)) {
+		ESP_LOGI(TAG, "File offset file fail");
+		// Send success response in JSON format
+		httpd_resp_set_type(req, "application/json");
+		const char *resp_str =
+			"{\"code\":500, \"msg\":\"Upload data parse fail.\"}";
+		httpd_resp_send(req, resp_str, strlen(resp_str));
+
+		return ESP_FAIL;
+	}
+
+	ESP_LOGI(TAG, "File upload successful, total size: %zu bytes",
+		 psram_buf->offset);
+
 	// Send success response in JSON format
 	httpd_resp_set_type(req, "application/json");
 	const char *resp_str = "{\"code\":200, \"msg\":\"Upload complete.\"}";
 	httpd_resp_send(req, resp_str, strlen(resp_str));
 
-	ESP_LOGI(TAG, "File upload successful, total size: %zu bytes",
-		 psram_buf->offset);
-
-	// 在这里可以对缓存的数据进行处理，比如转存到 SD 卡或其他操作
 	// 创建并打开文件
-	FILE *f = fopen(SDCARD_MOUNT_POINT "/save.bin", "wb+");
+	FILE *f = fopen(SDCARD_MOUNT_POINT "/request.bin", "wb+");
 	if (f == NULL) {
 		ESP_LOGE("SDMMC", "Failed to open file for writing");
 		sdcard_unmount();
@@ -235,7 +314,21 @@ esp_err_t upload_post_handler(httpd_req_t *req)
 	// 释放 PSRAM 缓存
 	free_psram_buffer(psram_buf);
 
+	int64_t start_time = esp_timer_get_time();
 	display_jpg_file(SDCARD_MOUNT_POINT "/upload.jpg");
+	int64_t end_time = esp_timer_get_time();
+	int64_t time_elapsed = end_time - start_time;
+	ESP_LOGI(TAG, "display_jpg_file execution time: %lld us\n",
+		 time_elapsed);
+
+#if 0 // TODO
+	const char *ws_msg_lcd_finish = "lcd_finish";
+	httpd_ws_frame_t ws_frame;
+	ws_frame.type = HTTPD_WS_TYPE_TEXT;
+	ws_frame.payload = (uint8_t *)ws_msg_lcd_finish;
+	ws_frame.len = strlen(ws_msg_lcd_finish);
+	httpd_ws_send_frame(req, &ws_frame);
+#endif
 
 	return ESP_OK;
 }
@@ -245,11 +338,115 @@ httpd_uri_t upload_uri = { .uri = "/upload",
 			   .handler = upload_post_handler,
 			   .user_ctx = NULL };
 
+struct async_resp_arg {
+	httpd_handle_t hd;
+	int fd;
+};
+
+static void ws_async_send(void *arg)
+{
+	static const char *data = "Async data";
+	struct async_resp_arg *resp_arg = arg;
+	httpd_handle_t hd = resp_arg->hd;
+	int fd = resp_arg->fd;
+	httpd_ws_frame_t ws_pkt;
+	memset(&ws_pkt, 0, sizeof(httpd_ws_frame_t));
+	ws_pkt.payload = (uint8_t *)data;
+	ws_pkt.len = strlen(data);
+	ws_pkt.type = HTTPD_WS_TYPE_TEXT;
+
+	httpd_ws_send_frame_async(hd, fd, &ws_pkt);
+	free(resp_arg);
+}
+
+static esp_err_t trigger_async_send(httpd_handle_t handle, httpd_req_t *req)
+{
+	struct async_resp_arg *resp_arg = malloc(sizeof(struct async_resp_arg));
+	if (resp_arg == NULL) {
+		return ESP_ERR_NO_MEM;
+	}
+	resp_arg->hd = req->handle;
+	resp_arg->fd = httpd_req_to_sockfd(req);
+	esp_err_t ret = httpd_queue_work(handle, ws_async_send, resp_arg);
+	if (ret != ESP_OK) {
+		free(resp_arg);
+	}
+	return ret;
+}
+
+static esp_err_t echo_handler(httpd_req_t *req)
+{
+	ESP_LOGI(TAG, "ws req: method=%d, content_len=%d, uri=%s", req->method,
+		 req->content_len, req->uri);
+
+	if (req->method == HTTP_GET) {
+		ESP_LOGI(TAG, "Handshake done, the new connection was opened");
+		return ESP_OK;
+	}
+#if 0
+	httpd_ws_frame_t ws_pkt;
+	uint8_t *buf = NULL;
+	memset(&ws_pkt, 0, sizeof(httpd_ws_frame_t));
+	ws_pkt.type = HTTPD_WS_TYPE_TEXT;
+	/* Set max_len = 0 to get the frame len */
+	esp_err_t ret = httpd_ws_recv_frame(req, &ws_pkt, 0);
+	if (ret != ESP_OK) {
+		ESP_LOGE(TAG,
+			 "httpd_ws_recv_frame failed to get frame len with %d",
+			 ret);
+		return ret;
+	}
+	ESP_LOGI(TAG, "frame len is %d", ws_pkt.len);
+	if (ws_pkt.len) {
+		/* ws_pkt.len + 1 is for NULL termination as we are expecting a string */
+		buf = calloc(1, ws_pkt.len + 1);
+		if (buf == NULL) {
+			ESP_LOGE(TAG, "Failed to calloc memory for buf");
+			return ESP_ERR_NO_MEM;
+		}
+		ws_pkt.payload = buf;
+		/* Set max_len = ws_pkt.len to get the frame payload */
+		ret = httpd_ws_recv_frame(req, &ws_pkt, ws_pkt.len);
+		if (ret != ESP_OK) {
+			ESP_LOGE(TAG, "httpd_ws_recv_frame failed with %d",
+				 ret);
+			free(buf);
+			return ret;
+		}
+		ESP_LOGI(TAG, "Got packet with message: %s", ws_pkt.payload);
+	}
+	ESP_LOGI(TAG, "Packet type: %d", ws_pkt.type);
+	if (ws_pkt.type == HTTPD_WS_TYPE_TEXT &&
+	    strcmp((char *)ws_pkt.payload, "Trigger async") == 0) {
+		free(buf);
+		return trigger_async_send(req->handle, req);
+	}
+
+	ret = httpd_ws_send_frame(req, &ws_pkt);
+	if (ret != ESP_OK) {
+		ESP_LOGE(TAG, "httpd_ws_send_frame failed with %d", ret);
+	}
+	free(buf);
+	return ret;
+#endif
+
+	return ESP_OK;
+}
+
+static const httpd_uri_t ws = { .uri = "/ws",
+				.method = HTTP_GET,
+				.handler = echo_handler,
+				.user_ctx = NULL,
+				.is_websocket = true };
 // 启动 HTTP 服务器
 void start_http_server()
 {
 	// 创建 HTTP 服务器
 	httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+	config.send_wait_timeout = 15; // 15 秒超时
+	config.max_resp_headers = 16; // 增加最大响应头数量
+	config.max_open_sockets = 4; // 限制最大并发连接数
+	config.send_wait_timeout = 15; // 增加发送超时时间
 
 	httpd_handle_t server = NULL;
 
@@ -257,7 +454,42 @@ void start_http_server()
 	if (httpd_start(&server, &config) == ESP_OK) {
 		ESP_LOGI(TAG, "httpd_start  OK");
 		httpd_register_uri_handler(server, &index_uri);
-		httpd_register_uri_handler(server, &css_uri);
+		//httpd_register_uri_handler(server, &css_uri);
 		httpd_register_uri_handler(server, &upload_uri);
+		// TODO
+		httpd_register_uri_handler(server, &ws);
+	}
+}
+
+// 定时器回调函数：释放缓存
+void cache_timer_callback(void *arg)
+{
+	if (html_cache) {
+		ESP_LOGI(TAG, "Releasing HTML cache from PSRAM.");
+		show_ram_space("cache_timer_callback");
+		heap_caps_free(html_cache); // 释放 PSRAM 缓存
+		html_cache = NULL;
+		html_cache_size = 0;
+	}
+}
+
+// 初始化定时器，用于释放缓存
+void init_cache_timer()
+{
+	if (cache_timer == NULL) {
+		const esp_timer_create_args_t timer_args = {
+			.callback = &cache_timer_callback,
+			.name = "html_cache_timer"
+		};
+		esp_timer_create(&timer_args, &cache_timer);
+	}
+}
+
+// 启动/重置缓存定时器
+void reset_cache_timer()
+{
+	if (cache_timer != NULL) {
+		esp_timer_stop(cache_timer); // 停止当前定时器（如果已在运行）
+		esp_timer_start_once(cache_timer, 120000000); // 60秒（1分钟）
 	}
 }

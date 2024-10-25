@@ -37,6 +37,7 @@
 #include "http_server.h"
 #include "file.h"
 #include "pindefine.h"
+#include "EL133UF1.h"
 
 static const char *TAG = "main";
 
@@ -79,9 +80,11 @@ void app_main(void)
 	heap_caps_print_heap_info(MALLOC_CAP_SPIRAM);
 
 	// 启动 HTTP 服务器和其他初始化
+	vTaskDelay(500 / portTICK_PERIOD_MS);
 	start_http_server();
 
-	app_start();
+	//app_start();
+	EL133UF1_Init();
 
 	ESP_LOGI(TAG, "infini loop");
 	while (1) {
