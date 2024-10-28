@@ -305,6 +305,20 @@ static const httpd_uri_t ws = { .uri = "/ws",
 				.handler = echo_handler,
 				.user_ctx = NULL,
 				.is_websocket = true };
+
+static esp_err_t favicon_get_handler(httpd_req_t *req)
+{
+	// 发送空的响应或图标文件
+	httpd_resp_send(req, "", 0); // 发送空响应
+	return ESP_OK;
+}
+
+// 注册favicon处理程序
+httpd_uri_t favicon_uri = { .uri = "/favicon.ico",
+			    .method = HTTP_GET,
+			    .handler = favicon_get_handler,
+			    .user_ctx = NULL };
+
 // 启动 HTTP 服务器
 void start_http_server()
 {
@@ -325,6 +339,7 @@ void start_http_server()
 		httpd_register_uri_handler(server, &upload_uri);
 		// TODO
 		httpd_register_uri_handler(server, &ws);
+		httpd_register_uri_handler(server, &favicon_uri);
 	}
 }
 
@@ -464,7 +479,6 @@ esp_err_t upload_post_handler(httpd_req_t *req)
 
 	return ESP_OK;
 }
-
 
 // 定时器回调函数：释放缓存
 void cache_timer_callback(void *arg)
