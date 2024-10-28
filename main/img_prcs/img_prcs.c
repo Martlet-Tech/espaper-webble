@@ -7,6 +7,10 @@
 #include "esp_vfs_fat.h"
 #include "esp_log.h"
 #include "jpeg_decoder.h"
+#include "ugui.h"
+#include "qr_encode.h"
+
+#define PALETTE_SIZE 6
 
 void rotate_90_counterclockwise_rgb888(unsigned char *image, int width,
 				       int height);
@@ -15,6 +19,9 @@ void stuckiDither(uint8_t *image, uint8_t *output_index, int image_width,
 
 void palette_index_to_E6_data(uint8_t *index_buffer, uint8_t *dst_m,
 			      uint8_t *dst_s);
+
+void draw_qrcode_on_ram(uint8_t *fb1);
+
 void reorder_array(uint8_t *array, int width, int height);
 
 esp_err_t display_jpg_file(const char *filename)
@@ -95,6 +102,8 @@ esp_err_t display_jpg_file(const char *filename)
 		reorder_array(index_buffer, outimg.width, outimg.height);
 	}
 
+	draw_qrcode_on_ram(index_buffer);
+
 	dst_image_buffer_m =
 		(uint8_t *)heap_caps_malloc(DST_FRAME_SIZE, MALLOC_CAP_SPIRAM);
 	dst_image_buffer_s =
@@ -124,8 +133,6 @@ void swap_pixels(unsigned char *a, unsigned char *b)
 	memcpy(a, b, 3);
 	memcpy(b, temp, 3);
 }
-
-#define PALETTE_SIZE 6
 
 const uint8_t palette[PALETTE_SIZE][3] = {
 	{ 0x00, 0x00, 0x00 }, //BLACK 0,index = 0
@@ -377,84 +384,311 @@ void reorder_array(uint8_t *array, int width, int height)
 	free(temp); // 释放临时缓存
 }
 
-#if 0
-// 在原地进行 90 度旋转（顺时针）
-void rotate_90_clockwise_rgb888(unsigned char *image, int width, int height)
+void draw_px_ug_port(int16_t x, int16_t y, uint32_t color, void *fb)
 {
-	int block_size = 16; // Adjust this according to your memory limits
-	uint8_t temp[block_size * 3]; // Temporary buffer for row storage
+	if (fb) {
+		((uint8_t *)fb)[y * EPD_WIDTH + x] = color;
+	} else {
+		ESP_LOGE("draw_px_ug_port", "fb not initial");
+	}
 
-	for (int y = 0; y < height; y += block_size) {
-		for (int x = 0; x < width; x += block_size) {
-			for (int i = 0; i < block_size && y + i < height; i++) {
-				// Store a row of pixels into the temp buffer
-				for (int j = 0; j < block_size && x + j < width;
-				     j++) {
-					// Calculate original and new positions
-					int orig_idx =
-						((y + i) * width + (x + j)) * 3;
-					int rotated_idx =
-						((x + j) * height +
-						 (height - 1 - (y + i))) *
-						3;
+	if (((y % 80) == 0) || ((x % 80) == 0)) {
+		vPortYield();
+	}
+}
 
-					// Store in temp buffer (copy one row at a time)
-					temp[j * 3] = image[rotated_idx];
-					temp[j * 3 + 1] =
-						image[rotated_idx + 1];
-					temp[j * 3 + 2] =
-						image[rotated_idx + 2];
+void draw_qr_code(uint16_t x, uint16_t y, int width_t, int side,
+		  uint8_t *bitdata, void *fb)
+{
+	//PCD8544_Clear();
+	int i = 0;
+	int j = 0;
+	int a = 0;
+	int l = 0;
+	int n = 0;
+	int OUT_FILE_PIXEL_PRESCALER = 1;
 
-					// Copy back the rotated pixels
-					image[rotated_idx] = image[orig_idx];
-					image[rotated_idx + 1] =
-						image[orig_idx + 1];
-					image[rotated_idx + 2] =
-						image[orig_idx + 2];
+	OUT_FILE_PIXEL_PRESCALER = width_t / side;
+
+	for (i = 0; i < side; i++) {
+		for (j = 0; j < side; j++) {
+			a = j * side + i;
+
+			if ((bitdata[a / 8] & (1 << (7 - a % 8)))) {
+				for (l = 0; l < OUT_FILE_PIXEL_PRESCALER; l++) {
+					for (n = 0;
+					     n < OUT_FILE_PIXEL_PRESCALER;
+					     n++) {
+						//*(pDestData + n * 3 + unWidthAdjusted * l) = PIXEL_COLOR_B;
+						/*PCD8544_DrawPixel(
+							OUT_FILE_PIXEL_PRESCALER *
+									i +
+								l,
+							OUT_FILE_PIXEL_PRESCALER *
+									(j) +
+								n,
+							PCD8544_Pixel_Set);*/
+						draw_px_ug_port(
+							x +
+								OUT_FILE_PIXEL_PRESCALER *
+									i +
+								l,
+							y +
+								OUT_FILE_PIXEL_PRESCALER *
+									(j) +
+								n,
+							BLACK, fb);
+					}
 				}
 			}
 		}
 	}
+
+	//PCD8544_Refresh();
 }
 
-// 逆时针旋转90度
-void rotate_90_counterclockwise_rgb888(unsigned char *image, int width,
-				       int height)
+void show_qrcode(void)
 {
-	int block_size = 16; // Adjust this according to your memory limits
-	uint8_t temp[block_size * 3]; // Temporary buffer for row storage
+	const char *TAG = "show_qrcode";
+	uint32_t fb_size_ms = EPD_HEIGHT * EPD_WIDTH / 4;
+	uint8_t *fb1 = NULL;
+	uint8_t *fbm = NULL;
+	uint8_t *fbs = NULL;
 
-	for (int y = 0; y < height; y += block_size) {
-		for (int x = 0; x < width; x += block_size) {
-			for (int i = 0; i < block_size && y + i < height; i++) {
-				// Store a row of pixels into the temp buffer
-				for (int j = 0; j < block_size && x + j < width;
-				     j++) {
-					// Calculate original and new positions
-					int orig_idx =
-						((y + i) * width + (x + j)) * 3;
-					int rotated_idx =
-						((x + j) * height +
-						 (height - 1 - (y + i))) *
-						3;
+	ESP_LOGI(TAG, "show_qrcode start");
 
-					// Store in temp buffer (copy one row at a time)
-					temp[j * 3] = image[rotated_idx];
-					temp[j * 3 + 1] =
-						image[rotated_idx + 1];
-					temp[j * 3 + 2] =
-						image[rotated_idx + 2];
+	show_ram_space("show_qrcode 1");
 
-					// Copy back the rotated pixels
-					image[rotated_idx] = image[orig_idx];
-					image[rotated_idx + 1] =
-						image[orig_idx + 1];
-					image[rotated_idx + 2] =
-						image[orig_idx + 2];
-				}
+	fb1 = (uint8_t *)heap_caps_malloc(EPD_HEIGHT * EPD_WIDTH,
+					  MALLOC_CAP_SPIRAM);
+	fbm = (uint8_t *)heap_caps_malloc(fb_size_ms, MALLOC_CAP_SPIRAM);
+	fbs = (uint8_t *)heap_caps_malloc(fb_size_ms, MALLOC_CAP_SPIRAM);
+
+	show_ram_space("show_qrcode 2");
+
+	UG_GUI ug;
+	UG_Init(&ug, draw_px_ug_port, EPD_WIDTH, EPD_HEIGHT, fb1);
+	//UG_FillScreen(WHITE);
+	//UG_FillCircle(100, 100, 30, 0x0);
+	UG_FillFrame(0, 1490, 1200 - 1, 1600 - 1, WHITE);
+	UG_SetBackcolor(WHITE);
+	UG_SetForecolor(BLACK);
+	UG_FontSelect(&FONT_12X20);
+	UG_PutString(300, 1500, "Step 1: Scan left to connect Wi-Fi");
+	UG_PutString(300, 1530, "Step 2: Scan Right to connect to Website");
+	UG_PutString(300, 1560, "Step 3: Select an image to upload to EPD");
+
+	wifi_config_t wifi_config;
+	esp_err_t ret = esp_wifi_get_config(WIFI_IF_AP, &wifi_config);
+	if (ret == ESP_OK) {
+		printf("AP SSID: %s\n", wifi_config.ap.ssid);
+		printf("AP Password: %s\n", wifi_config.ap.password);
+	} else {
+		printf("Failed to get AP config: %s\n", esp_err_to_name(ret));
+	}
+
+	char *str_wifi = heap_caps_malloc(256, MALLOC_CAP_SPIRAM);
+	sprintf(str_wifi, "WIFI:T:WPA;S:%s;P:%s;;", wifi_config.ap.ssid,
+		wifi_config.ap.password);
+	uint8_t *qrbits_wifi =
+		(uint8_t *)heap_caps_malloc(QR_MAX_BITDATA, MALLOC_CAP_SPIRAM);
+	int side = qr_encode(QR_LEVEL_M, 0, str_wifi, strlen(str_wifi),
+			     qrbits_wifi);
+	ESP_LOGI(TAG, "qrencode side = %d", side);
+	draw_qr_code(10, 1510, 100, side, qrbits_wifi, fb1);
+	free(str_wifi);
+	free(qrbits_wifi);
+
+	//======================
+	esp_netif_ip_info_t ip_info;
+	esp_netif_t *netif =
+		esp_netif_get_handle_from_ifkey("WIFI_AP_DEF"); // Station模式下
+
+	if (esp_netif_get_ip_info(netif, &ip_info) == ESP_OK) {
+		printf("IP Address: " IPSTR "\n", IP2STR(&ip_info.ip));
+		printf("Netmask: " IPSTR "\n", IP2STR(&ip_info.netmask));
+		printf("Gateway: " IPSTR "\n", IP2STR(&ip_info.gw));
+	} else {
+		printf("Failed to get IP address\n");
+	}
+
+	char *str_web = heap_caps_malloc(256, MALLOC_CAP_SPIRAM);
+	sprintf(str_web, IPSTR "/?width=1200&height=1600", IP2STR(&ip_info.ip));
+	uint8_t *qrbits_web =
+		(uint8_t *)heap_caps_malloc(QR_MAX_BITDATA, MALLOC_CAP_SPIRAM);
+	int side_web =
+		qr_encode(QR_LEVEL_M, 0, str_web, strlen(str_web), qrbits_web);
+	ESP_LOGI(TAG, "qrencode side = %d", side);
+	draw_qr_code(1000, 1510, 100, side_web, qrbits_web, fb1);
+	free(str_web);
+	free(qrbits_web);
+
+	// fb1 -> fb2
+	palette_index_to_E6_data(fb1, fbm, fbs);
+
+	// ppd send data, update
+	EL133UF1_Init();
+	EL133UF1_DisplayFrame(fbm, fbs);
+	EL133UF1_Sleep();
+	EL133UF1_Deinit();
+
+	free(fb1);
+	free(fbm);
+	free(fbs);
+
+	show_ram_space("show_qrcode");
+}
+
+void draw_qrcode_on_ram(uint8_t *fb1)
+{
+	const char *TAG = "draw_qrcode_on_ram";
+
+	UG_GUI ug;
+	UG_Init(&ug, draw_px_ug_port, EPD_WIDTH, EPD_HEIGHT, fb1);
+	UG_FillFrame(0, 1490, 1200 - 1, 1600 - 1, WHITE);
+	UG_SetBackcolor(WHITE);
+	UG_SetForecolor(BLACK);
+	UG_FontSelect(&FONT_12X20);
+
+	wifi_config_t wifi_config;
+	esp_err_t ret = esp_wifi_get_config(WIFI_IF_AP, &wifi_config);
+	if (ret == ESP_OK) {
+		printf("AP SSID: %s\n", wifi_config.ap.ssid);
+		printf("AP Password: %s\n", wifi_config.ap.password);
+	} else {
+		printf("Failed to get AP config: %s\n", esp_err_to_name(ret));
+	}
+
+	char *str_wifi = heap_caps_malloc(128, MALLOC_CAP_SPIRAM);
+	sprintf(str_wifi, "WIFI:T:WPA;S:%s;P:%s;;", wifi_config.ap.ssid,
+		wifi_config.ap.password);
+	uint8_t *qrbits_wifi =
+		(uint8_t *)heap_caps_malloc(QR_MAX_BITDATA, MALLOC_CAP_SPIRAM);
+	int side = qr_encode(QR_LEVEL_M, 0, str_wifi, strlen(str_wifi),
+			     qrbits_wifi);
+	ESP_LOGI(TAG, "qrencode side = %d", side);
+	draw_qr_code(10, 1510, 100, side, qrbits_wifi, fb1);
+
+	//======================
+	esp_netif_ip_info_t ip_info;
+	esp_netif_t *netif =
+		esp_netif_get_handle_from_ifkey("WIFI_AP_DEF"); // Station模式下
+
+	if (esp_netif_get_ip_info(netif, &ip_info) == ESP_OK) {
+		printf("IP Address: " IPSTR "\n", IP2STR(&ip_info.ip));
+		printf("Netmask: " IPSTR "\n", IP2STR(&ip_info.netmask));
+		printf("Gateway: " IPSTR "\n", IP2STR(&ip_info.gw));
+	} else {
+		printf("Failed to get IP address\n");
+	}
+
+	char *str_web = heap_caps_malloc(128, MALLOC_CAP_SPIRAM);
+	sprintf(str_web, "http://" IPSTR "/?width=1200&height=1600",
+		IP2STR(&ip_info.ip));
+	uint8_t *qrbits_web =
+		(uint8_t *)heap_caps_malloc(QR_MAX_BITDATA, MALLOC_CAP_SPIRAM);
+	int side_web =
+		qr_encode(QR_LEVEL_M, 0, str_web, strlen(str_web), qrbits_web);
+	ESP_LOGI(TAG, "qrencode side = %d", side);
+	draw_qr_code(1000, 1510, 100, side_web, qrbits_web, fb1);
+
+	// ========================================== put text
+
+	char *text_wifi = heap_caps_malloc(256, MALLOC_CAP_SPIRAM);
+	sprintf(text_wifi, "#1: Scan left to connect Wi-Fi <S:%s P:%s>",
+		wifi_config.ap.ssid, wifi_config.ap.password);
+	UG_PutString(120, 1500, text_wifi);
+	free(text_wifi);
+
+	UG_PutString(120, 1525, "#2: Scan Right to connect to Website");
+
+	char *text_manual = heap_caps_malloc(256, MALLOC_CAP_SPIRAM);
+	sprintf(text_manual, "Web: <%s>", str_web);
+	UG_PutString(120, 1550, text_manual);
+	free(text_manual);
+
+	UG_PutString(120, 1575, "#3: Select an image to upload to EPD");
+	// ========================================== put text
+
+	free(str_wifi);
+	free(qrbits_wifi);
+	free(str_web);
+	free(qrbits_web);
+}
+
+void draw_note(uint8_t *fb1)
+{
+	char note1[] =
+		"Use the phone's built-in camera to scan the QR code because most current mobile operating systems restrict third-party applications from controlling Wi-Fi settings directly.";
+	char note2[] =
+		"After connecting to the Wi-Fi, you may see a message saying that this network has no internet access, or prompting you to use mobile data instead. This is normal, as this project operates locally. Choose to stay on this Wi-Fi network and ignore prompts to switch to mobile data.";
+
+	UG_GUI ug;
+	UG_Init(&ug, draw_px_ug_port, EPD_WIDTH, EPD_HEIGHT, fb1);
+	UG_FillFrame(0, 1490, 1200 - 1, 1600 - 1, WHITE);
+	UG_SetBackcolor(WHITE);
+	UG_SetForecolor(RED);
+	UG_FontSelect(&FONT_24X40);
+
+	UG_PutString(50, 100, note1);
+	UG_PutString(50, 500, note2);
+}
+
+void show_start_screen(void)
+{
+	uint8_t *fb1 = (uint8_t *)heap_caps_malloc(EPD_HEIGHT * EPD_WIDTH,
+						   MALLOC_CAP_SPIRAM);
+	uint8_t *fbm = (uint8_t *)heap_caps_malloc(EPD_HEIGHT * EPD_WIDTH / 4,
+						   MALLOC_CAP_SPIRAM);
+	uint8_t *fbs = (uint8_t *)heap_caps_malloc(EPD_HEIGHT * EPD_WIDTH / 4,
+						   MALLOC_CAP_SPIRAM);
+
+	//memset(fb1, WHITE, EPD_HEIGHT * EPD_WIDTH);
+
+	for (int y = 0; y < EPD_HEIGHT; y++) {
+		for (int x = 0; x < EPD_WIDTH; x++) {
+			// white
+			if (x < 200) {
+				draw_px_ug_port(x, y, BLACK, fb1);
+			}
+			// black
+			if ((x >= 200) && (x < 400)) {
+				draw_px_ug_port(x, y, WHITE, fb1);
+			}
+			// red
+			if ((x >= 400) && (x < 600)) {
+				draw_px_ug_port(x, y, YELLOW, fb1);
+			}
+			// green
+			if ((x >= 600) && (x < 800)) {
+				draw_px_ug_port(x, y, RED, fb1);
+			}
+			// blue
+			if ((x >= 800) && (x < 1000)) {
+				draw_px_ug_port(x, y, BLUE - 1, fb1);
+			}
+			// yellow
+			if ((x >= 1000) && (x < 1200)) {
+				draw_px_ug_port(x, y, GREEN - 1, fb1);
 			}
 		}
 	}
-}
 
-#endif
+	draw_note(fb1);
+	draw_qrcode_on_ram(fb1);
+
+	// fb1 -> fb2
+	palette_index_to_E6_data(fb1, fbm, fbs);
+	free(fb1);
+
+	// ppd send data, update
+	EL133UF1_Init();
+	EL133UF1_DisplayFrame(fbm, fbs);
+	EL133UF1_Sleep();
+	EL133UF1_Deinit();
+
+	free(fbm);
+	free(fbs);
+
+	show_ram_space("show_qrcode");
+}

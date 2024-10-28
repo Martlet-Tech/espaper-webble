@@ -80,7 +80,7 @@ void wifi_init_softap()
 	esp_netif_init();
 	esp_event_loop_create_default();
 
-	 esp_netif_t *ap_netif = esp_netif_create_default_wifi_ap();
+	esp_netif_t *ap_netif = esp_netif_create_default_wifi_ap();
 
 	// 注册 Wi-Fi 事件处理器
 	esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
@@ -143,5 +143,5 @@ void wifi_init_softap()
 	// 重新启动 DHCP 服务
 	ESP_ERROR_CHECK(esp_netif_dhcps_start(ap_netif));
 
-	ESP_LOGI(TAG, "AP IP address set to: 192.168.4.1");
+	ESP_LOGI(TAG, "AP IP address set to: " IPSTR ".", IP2STR(&ip_info.ip));
 }

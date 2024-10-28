@@ -14,12 +14,12 @@
 
 #include "esp_attr.h"
 
-#define BLACK 0x00
-#define WHITE 0x11
-#define YELLOW 0x22
-#define RED 0x33
-#define BLUE 0x55
-#define GREEN 0x66
+#define BLACK 0x0
+#define WHITE 0x1
+#define YELLOW 0x2
+#define RED 0x3
+#define BLUE 0x5
+#define GREEN 0x6
 
 #define PSR 0x00
 #define PWR 0x01

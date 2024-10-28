@@ -211,6 +211,7 @@ void EL133UF1_DisplayFrame(const unsigned char *frame_buffer_m,
 void EL133UF1_DisplayColor(unsigned char color, unsigned char *frame_buffer_m,
 			   unsigned char *frame_buffer_s)
 {
+	color = color + (color << 4);
 	ESP_LOGI(TAG, "EL133UF1_DisplayColor Prepare.");
 	for (unsigned int i = 0; i < EPD_FRAME_SIZE; i++) {
 		frame_buffer_m[i] = color;

@@ -38,6 +38,7 @@
 #include "file.h"
 #include "pindefine.h"
 #include "EL133UF1.h"
+#include "img_prcs.h"
 
 static const char *TAG = "main";
 
@@ -77,14 +78,14 @@ void app_main(void)
 
 	wifi_init_softap();
 
-	heap_caps_print_heap_info(MALLOC_CAP_SPIRAM);
-
 	// 启动 HTTP 服务器和其他初始化
 	vTaskDelay(500 / portTICK_PERIOD_MS);
 	start_http_server();
 
 	//app_start();
 	EL133UF1_Init();
+
+	show_start_screen();
 
 	ESP_LOGI(TAG, "infini loop");
 	while (1) {
