@@ -19,6 +19,8 @@
 /* Scratch buffer size */
 #define SCRATCH_BUFSIZE  8192
 
+
+
 struct file_server_data {
 	/* Base path of file storage */
 	char base_path[ESP_VFS_PATH_MAX + 1];

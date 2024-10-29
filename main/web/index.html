@@ -317,12 +317,27 @@
         text-align: center;
         margin-bottom: 15px;
       ">
-    <a href="https://gb.yes-lcd.com/">亚世光电(集团)股份有限公司</a>
+    <a href="https://www.yes-lcd.com/">www.yes-lcd.com</a>
+    <br />
+    <a href="#" onclick="addToFavorites()">Add YES-LCD to Favorites</a>
   </div>
 
   <!-- <button id="update">组件更新</button> -->
 
   <script>
+    function addToFavorites() {
+      const url = "https://www.yes-lcd.com/"; // 指定的网页链接
+      const title = "YES OPTOELECTRONICS CO.,LTD."; // 指定的网页标题
+
+      // 针对IE浏览器的添加收藏功能
+      if (window.external && 'addFavorite' in window.external) {
+        window.external.addFavorite(url, title);
+      } else {
+        // 非IE浏览器的提示
+        alert('按 Ctrl+D (或 Cmd+D) 将 ' + title + ' 加入收藏！');
+      }
+    }
+
     // 定义全局变量 simpleCrop
     var simpleCrop = null;
 
@@ -330,46 +345,7 @@
 
     var previewContainer = document.querySelector(".image-preview");
 
-    var macList = [
-      "31390B0072E0",
-      "31390B00A84D",
-      "31390B00A95E",
-      "31390B00A8B7",
-      "31390B00A79E",
-      "31390B00A979",
-      "31390B00A793",
-      "31390B006B3E",
-      "31390B00A7DF",
-      "31390B00A868",
-      "31390B001DCA",
-      "31390B004D87",
-      "31390A01A767",
-      "31390B007F50",
-      "31390A01AB66",
-      "31390B002D61",
-      "31390B001CB5",
-      "31390A01A7A3",
-      "31390B003885",
-      "31390B10A60D",
-    ];
-
     var queryParams = getQueryParams();
-
-    //// 创建 WebSocket 连接
-    //const ws = new WebSocket("ws://" + location.host + "/ws");
-//
-    //// 监听 WebSocket 消息
-    //ws.onmessage = function (event) {
-    //  const message = event.data;
-    //  alert(message);
-    //  if (message === "done") {
-    //    // 当接收到 "done" 消息时，隐藏 toast 提示
-    //    const toast = document.getElementById("toast");
-    //    toast.style.display = "none";
-    //    const overlay = document.getElementById("overlay");
-    //    overlay.style.display = "none";
-    //  }
-    //};
 
     //上传图片
     var $upload = document.querySelector("#upload");
@@ -427,12 +403,16 @@
             return;
           }
 
+          // 创建当前时间戳
+          const uploadTimestamp = Date.now();
+          const systemInfo = navigator.userAgent;
+
           // 创建FormData对象
           var formData = new FormData();
           // 将Blob添加到FormData中，可以指定文件名
-          //formData.append("file", blob);
-          formData.append("file", new File([blob], "upload.jpg"));
-          formData.append("type", queryParams.type);
+          formData.append("timestamp", uploadTimestamp);
+          formData.append("systemInfo", systemInfo);
+          formData.append("file", new File([blob], "upload.jpg", { type: "image/jpeg" }));
           //formData.append("deviceId", queryParams.deviceId);
           //formData.append("labelMacList", macList);
 
@@ -441,29 +421,55 @@
           xhr.open(
             "POST",
             "/upload"
-            //"http://iot.seekink.cn:8089/publish/prod-api/front/publish/material/scanCodeBrushPic"
             //"http://iot.seekink.cn:8090/cloud/prod-api/api/v1/label/scanCodeBrushPic"
           );
           xhr.setRequestHeader("Accept-Language", "en");
+
           xhr.onload = function () {
             if (xhr.status === 200) {
-              let data = JSON.parse(xhr.response);
-              if (data.code === 200) {
-                showToast(
-                  "Upload successfully, please wait for the device to download the picture，It takes about a minute to display the picture。",
-                  "success"
-                ); // 显示成功提示
-              } else {
-                showToast(data.msg, "error");
+              try {
+                let data = JSON.parse(xhr.response);
+                if (data.code === 200) {
+                  showToast(
+                    "Upload successfully, please wait for the device to download the picture. It takes about a minute to display the picture.",
+                    "success"
+                  );
+                  // TODO 开始检查状态 
+                  // checkStatus();
+                } else {
+                  showToast(data.msg, "error");
+                }
+              } catch (e) {
+                showToast("Unexpected server response format", "error");
               }
             } else {
-              showToast("Upload failed, please try again！", "error"); // 显示失败提示
+              showToast("Upload failed, please try again!", "error");
             }
           };
+
           xhr.onerror = function () {
-            showToast("Upload failed, please try again！", "error"); // 显示失败提示
+            showToast("Upload failed, please try again!", "error"); // 显示失败提示
           };
           xhr.send(formData);
+
+          // 检查处理状态的函数
+          function checkStatus() {
+            fetch('/status')
+              .then(response => response.text())
+              .then(status => {
+                document.getElementById('status').innerText = '当前处理阶段: ' + status;
+                showToast('当前处理阶段: ' + status, 'success');
+
+                // 如果处理未完成，继续请求状态
+                if (status !== 'completed') {
+                  setTimeout(checkStatus, 2000); // 每2秒请求一次
+                }
+              })
+              .catch(error => {
+                console.error('Error:', error);
+                showToast('处理过程出错: ' + status, 'error');
+              });
+          }
         },
         type,
         quality

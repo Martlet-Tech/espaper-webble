@@ -24,6 +24,8 @@ void draw_qrcode_on_ram(uint8_t *fb1);
 
 void reorder_array(uint8_t *array, int width, int height);
 
+char processing_stage[20] = "idle"; // 初始阶段;
+
 esp_err_t display_jpg_file(const char *filename)
 {
 	const char *TAG = "display_jpg_file";
@@ -86,6 +88,8 @@ esp_err_t display_jpg_file(const char *filename)
 						  outimg.width, outimg.height);
 	}*/
 
+	strcpy(processing_stage, "dithering");
+
 	show_ram_space("before malloc index_buffer");
 	index_buffer = (uint8_t *)heap_caps_malloc(EPD_WIDTH * EPD_HEIGHT,
 						   MALLOC_CAP_SPIRAM);
@@ -104,6 +108,8 @@ esp_err_t display_jpg_file(const char *filename)
 
 	draw_qrcode_on_ram(index_buffer);
 
+	strcpy(processing_stage, "reindexing");
+
 	dst_image_buffer_m =
 		(uint8_t *)heap_caps_malloc(DST_FRAME_SIZE, MALLOC_CAP_SPIRAM);
 	dst_image_buffer_s =
@@ -113,6 +119,8 @@ esp_err_t display_jpg_file(const char *filename)
 	free(index_buffer);
 	ESP_LOGI(TAG, "取模完成");
 
+	strcpy(processing_stage, "updating");
+
 	EL133UF1_Init();
 	EL133UF1_DisplayFrame(dst_image_buffer_m, dst_image_buffer_s);
 	EL133UF1_Sleep();
@@ -121,6 +129,8 @@ esp_err_t display_jpg_file(const char *filename)
 	free(dst_image_buffer_s);
 	ESP_LOGI(TAG, "显示完成");
 	show_ram_space("end of display_jpg_file");
+
+	strcpy(processing_stage, "completed");
 
 	return ESP_OK;
 }
@@ -178,9 +188,13 @@ uint8_t FindNearestColor(uint8_t *pixel_rgb)
 void stuckiDither(uint8_t *image, uint8_t *output_index, int image_width,
 		  int image_height)
 {
+	const char *TAG = "Dithering";
+	ESP_LOGI(TAG, "start");
 	for (int y = 0; y < image_height; y++) {
 		// 每行结束后让出 CPU
 		if (y % 10 == 0) { // 可以尝试让出 CPU 的频率，比如每 10 行
+			printf(".");
+			fflush(stdout);
 			taskYIELD(); // 或者 vTaskDelay(1)
 		}
 
@@ -321,6 +335,8 @@ void stuckiDither(uint8_t *image, uint8_t *output_index, int image_width,
 			}
 		}
 	}
+
+	printf(".\r\n");
 }
 
 void palette_index_to_E6_data(uint8_t *index_buffer, uint8_t *dst_m,

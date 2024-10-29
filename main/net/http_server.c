@@ -19,6 +19,8 @@ static char *html_cache = NULL; // PSRAM 中的缓存指针
 static size_t html_cache_size = 0; // 缓存的大小
 static esp_timer_handle_t cache_timer = NULL; // 定时器句柄
 
+bool is_busy = false;
+
 void cache_timer_callback(void *arg);
 void init_cache_timer();
 void reset_cache_timer();
@@ -68,57 +70,6 @@ esp_err_t index_get_handler(httpd_req_t *req)
 	reset_cache_timer(); // 启动定时器
 
 	return ESP_OK;
-
-#if 0
-	// 如果 html_buffer 为空，说明文件还没有加载
-	if (html_buffer == NULL) {
-		ESP_LOGE(TAG, "HTML buffer is empty. Cannot serve the file.");
-		//httpd_resp_send_404(req);
-		load_html_to_psram();
-		//return ESP_FAIL;
-	}
-
-	// 从缓存中发送文件内容到客户端
-	esp_err_t ret = httpd_resp_send(req, html_buffer, html_length);
-	if (ret == ESP_OK) {
-		ESP_LOGI(TAG, "Html served successfully");
-	} else {
-		ESP_LOGE(TAG, "Error sending HTML");
-	}
-
-	return ret;
-#endif
-#if 0
-	/* 打开 SPIFFS 中的 index.html 文件 */
-	FILE *f = fopen(SPIFFS_MOUNT_POINT "/index.html", "r");
-	if (f == NULL) {
-		ESP_LOGE(TAG, "无法打开 index.html 文件");
-		/* 发送404错误页面 */
-		httpd_resp_send_404(req);
-		return ESP_FAIL;
-	}
-	const size_t line_buff_lenght = 8192;
-	char *line = heap_caps_malloc(line_buff_lenght, MALLOC_CAP_SPIRAM);
-	memset(line, 0, line_buff_lenght);
-	int line_num = 0;
-	/* 逐行读取文件内容并发送到客户端 */
-	while (fgets(line, line_buff_lenght, f) != NULL) {
-		httpd_resp_sendstr_chunk(req, line);
-		memset(line, 0, line_buff_lenght);
-
-		if ((line_num % 100) == 0) {
-			ESP_LOGI(TAG, "line: %d", line_num);
-		}
-		line_num++;
-	}
-	heap_caps_free(line);
-
-	/* 发送完成并关闭文件 */
-	fclose(f);
-	httpd_resp_sendstr_chunk(req, NULL); // 发送完最后一块数据
-	ESP_LOGI(TAG, "Html send finish");
-	return ESP_OK;
-#endif
 }
 
 httpd_uri_t index_uri = { .uri = "/", // 根路径
@@ -210,7 +161,7 @@ struct async_resp_arg {
 	int fd;
 };
 
-static void ws_async_send(void *arg)
+/*static void ws_async_send(void *arg)
 {
 	static const char *data = "Async data";
 	struct async_resp_arg *resp_arg = arg;
@@ -224,9 +175,9 @@ static void ws_async_send(void *arg)
 
 	httpd_ws_send_frame_async(hd, fd, &ws_pkt);
 	free(resp_arg);
-}
+}*/
 
-static esp_err_t trigger_async_send(httpd_handle_t handle, httpd_req_t *req)
+/*static esp_err_t trigger_async_send(httpd_handle_t handle, httpd_req_t *req)
 {
 	struct async_resp_arg *resp_arg = malloc(sizeof(struct async_resp_arg));
 	if (resp_arg == NULL) {
@@ -239,72 +190,7 @@ static esp_err_t trigger_async_send(httpd_handle_t handle, httpd_req_t *req)
 		free(resp_arg);
 	}
 	return ret;
-}
-
-static esp_err_t echo_handler(httpd_req_t *req)
-{
-	ESP_LOGI(TAG, "ws req: method=%d, content_len=%d, uri=%s", req->method,
-		 req->content_len, req->uri);
-
-	if (req->method == HTTP_GET) {
-		ESP_LOGI(TAG, "Handshake done, the new connection was opened");
-		return ESP_OK;
-	}
-#if 0
-	httpd_ws_frame_t ws_pkt;
-	uint8_t *buf = NULL;
-	memset(&ws_pkt, 0, sizeof(httpd_ws_frame_t));
-	ws_pkt.type = HTTPD_WS_TYPE_TEXT;
-	/* Set max_len = 0 to get the frame len */
-	esp_err_t ret = httpd_ws_recv_frame(req, &ws_pkt, 0);
-	if (ret != ESP_OK) {
-		ESP_LOGE(TAG,
-			 "httpd_ws_recv_frame failed to get frame len with %d",
-			 ret);
-		return ret;
-	}
-	ESP_LOGI(TAG, "frame len is %d", ws_pkt.len);
-	if (ws_pkt.len) {
-		/* ws_pkt.len + 1 is for NULL termination as we are expecting a string */
-		buf = calloc(1, ws_pkt.len + 1);
-		if (buf == NULL) {
-			ESP_LOGE(TAG, "Failed to calloc memory for buf");
-			return ESP_ERR_NO_MEM;
-		}
-		ws_pkt.payload = buf;
-		/* Set max_len = ws_pkt.len to get the frame payload */
-		ret = httpd_ws_recv_frame(req, &ws_pkt, ws_pkt.len);
-		if (ret != ESP_OK) {
-			ESP_LOGE(TAG, "httpd_ws_recv_frame failed with %d",
-				 ret);
-			free(buf);
-			return ret;
-		}
-		ESP_LOGI(TAG, "Got packet with message: %s", ws_pkt.payload);
-	}
-	ESP_LOGI(TAG, "Packet type: %d", ws_pkt.type);
-	if (ws_pkt.type == HTTPD_WS_TYPE_TEXT &&
-	    strcmp((char *)ws_pkt.payload, "Trigger async") == 0) {
-		free(buf);
-		return trigger_async_send(req->handle, req);
-	}
-
-	ret = httpd_ws_send_frame(req, &ws_pkt);
-	if (ret != ESP_OK) {
-		ESP_LOGE(TAG, "httpd_ws_send_frame failed with %d", ret);
-	}
-	free(buf);
-	return ret;
-#endif
-
-	return ESP_OK;
-}
-
-static const httpd_uri_t ws = { .uri = "/ws",
-				.method = HTTP_GET,
-				.handler = echo_handler,
-				.user_ctx = NULL,
-				.is_websocket = true };
+}*/
 
 static esp_err_t favicon_get_handler(httpd_req_t *req)
 {
@@ -318,6 +204,21 @@ httpd_uri_t favicon_uri = { .uri = "/favicon.ico",
 			    .method = HTTP_GET,
 			    .handler = favicon_get_handler,
 			    .user_ctx = NULL };
+
+extern char processing_stage[];
+
+// 处理状态的 HTTP GET 处理程序
+esp_err_t status_get_handler(httpd_req_t *req)
+{
+	ESP_LOGI("status_get_handler", "status now: %s", processing_stage);
+	httpd_resp_sendstr(req, processing_stage);
+	return ESP_OK;
+}
+
+httpd_uri_t status_uri = { .uri = "/status",
+			   .method = HTTP_GET,
+			   .handler = status_get_handler,
+			   .user_ctx = NULL };
 
 // 启动 HTTP 服务器
 void start_http_server()
@@ -337,14 +238,53 @@ void start_http_server()
 		httpd_register_uri_handler(server, &index_uri);
 		//httpd_register_uri_handler(server, &css_uri);
 		httpd_register_uri_handler(server, &upload_uri);
-		// TODO
-		httpd_register_uri_handler(server, &ws);
 		httpd_register_uri_handler(server, &favicon_uri);
+		httpd_register_uri_handler(server, &status_uri);
 	}
+}
+
+int find_jpeg_start(const unsigned char *data, size_t data_len)
+{
+	// 定义Content-Type字段和分隔符的标记
+	const char *content_type = "Content-Type: image/jpeg";
+	const char *double_crlf = "\r\n\r\n";
+
+	// 查找Content-Type的结束位置
+	const unsigned char *pos =
+		memmem(data, data_len, content_type, strlen(content_type));
+	if (pos == NULL) {
+		printf("Content-Type not found\n");
+		return -1;
+	}
+
+	// 查找Content-Type行后的双换行符位置
+	pos = memmem(pos + strlen(content_type),
+		     data_len - (pos - data + strlen(content_type)),
+		     double_crlf, strlen(double_crlf));
+	if (pos == NULL) {
+		printf("Double CRLF not found after Content-Type\n");
+		return -1;
+	}
+
+	// JPEG数据开始的位置是双换行符的末尾
+	return (pos - data) + strlen(double_crlf);
 }
 
 esp_err_t upload_post_handler(httpd_req_t *req)
 {
+	if (is_busy) {
+		// 服务器忙碌，返回错误信息
+		ESP_LOGI(TAG, "Server busy");
+		httpd_resp_set_type(req, "application/json");
+		const char *busy_resp =
+			"{\"code\":503, \"msg\":\"Server busy. Please try again later.\"}";
+		httpd_resp_send(req, busy_resp, strlen(busy_resp));
+		return ESP_OK;
+	}
+
+	// 标志置为忙碌状态
+	is_busy = true;
+
 	char buf[BUFFER_SIZE];
 	int received;
 	size_t remaining_size = MAX_FILE_SIZE;
@@ -352,6 +292,8 @@ esp_err_t upload_post_handler(httpd_req_t *req)
 	ESP_LOGI(TAG, "httpd_req_t *req->method= %d", req->method);
 	ESP_LOGI(TAG, "httpd_req_t *req.uri= %s", req->uri);
 	ESP_LOGI(TAG, "httpd_req_t *req.content_len= %d", req->content_len);
+
+	strcpy(processing_stage, "saving");
 
 	// 初始化 PSRAM 缓存
 	psram_buffer_t *psram_buf = init_psram_buffer(MAX_FILE_SIZE);
@@ -388,7 +330,7 @@ esp_err_t upload_post_handler(httpd_req_t *req)
 	}
 
 	// find file start
-	const unsigned char *start_string = (unsigned char *)"\x0d\x0a\x0d\x0a";
+	/*const unsigned char *start_string = (unsigned char *)"\x0d\x0a\x0d\x0a";
 	const void *pos = memmem(psram_buf->data, 1024, start_string, 4);
 	if (pos == NULL) {
 		ESP_LOGE(TAG, "File received has fault");
@@ -396,7 +338,11 @@ esp_err_t upload_post_handler(httpd_req_t *req)
 	ptrdiff_t offset_file_start = (const unsigned char *)pos -
 				      (const unsigned char *)(psram_buf->data);
 	offset_file_start += 4;
-	ESP_LOGI(TAG, "File offset = %d", (int)offset_file_start);
+	ESP_LOGI(TAG, "File offset = %d", (int)offset_file_start);*/
+	ptrdiff_t offset_file_start =
+		find_jpeg_start((const unsigned char *)(psram_buf->data), 1024);
+
+	const void *pos = NULL;
 
 	// find file ends
 	const char *end_string = "------WebKitFormBoundary";
@@ -454,10 +400,9 @@ esp_err_t upload_post_handler(httpd_req_t *req)
 	       offset_file_end - offset_file_start, f);
 	fclose(f);
 
-	// TODO: 进度条
-
 	// 释放 PSRAM 缓存
 	free_psram_buffer(psram_buf);
+	strcpy(processing_stage, "decoding");
 
 	int64_t start_time = esp_timer_get_time();
 	display_jpg_file(SDCARD_MOUNT_POINT "/upload.jpg");
@@ -466,7 +411,7 @@ esp_err_t upload_post_handler(httpd_req_t *req)
 	ESP_LOGI(TAG, "display_jpg_file execution time: %lld us\n",
 		 time_elapsed);
 
-	trigger_async_send(req->handle, req);
+	//trigger_async_send(req->handle, req);
 
 #if 0 // TODO
 	const char *ws_msg_lcd_finish = "lcd_finish";
@@ -476,6 +421,7 @@ esp_err_t upload_post_handler(httpd_req_t *req)
 	ws_frame.len = strlen(ws_msg_lcd_finish);
 	httpd_ws_send_frame(req, &ws_frame);
 #endif
+	is_busy = false;
 
 	return ESP_OK;
 }
