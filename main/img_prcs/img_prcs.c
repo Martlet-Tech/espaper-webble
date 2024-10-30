@@ -16,6 +16,8 @@ void rotate_90_counterclockwise_rgb888(unsigned char *image, int width,
 				       int height);
 void stuckiDither(uint8_t *image, uint8_t *output_index, int image_width,
 		  int image_height);
+void atkinsonDither(uint8_t *image, uint8_t *output_index, int image_width,
+		    int image_height);
 
 void palette_index_to_E6_data(uint8_t *index_buffer, uint8_t *dst_m,
 			      uint8_t *dst_s);
@@ -95,8 +97,9 @@ esp_err_t display_jpg_file(const char *filename)
 						   MALLOC_CAP_SPIRAM);
 	show_ram_space("after malloc index_buffer");
 
-	stuckiDither((uint8_t *)org_image_buffer, (uint8_t *)index_buffer, w,
-		     h);
+	//stuckiDither((uint8_t *)org_image_buffer, (uint8_t *)index_buffer, w, h);
+	atkinsonDither((uint8_t *)org_image_buffer, (uint8_t *)index_buffer, w,
+		       h);
 
 	free(org_image_buffer);
 	show_ram_space("after free org_image_buffer");
@@ -249,13 +252,17 @@ void stuckiDither(uint8_t *image, uint8_t *output_index, int image_width,
 								(error * 4) /
 									42);
 					}
-					image[pixel_offset + image_width * 3 +
-					      i] =
-						plus_truncate_uchar(
-							image[pixel_offset +
-							      image_width * 3 +
-							      i],
-							(error * 8) / 42);
+					{ // x = x
+						image[pixel_offset +
+						      image_width * 3 + i] =
+							plus_truncate_uchar(
+								image[pixel_offset +
+								      image_width *
+									      3 +
+								      i],
+								(error * 8) /
+									42);
+					}
 					if (x + 1 < image_width) {
 						image[pixel_offset +
 						      image_width * 3 + 3 + i] =
@@ -302,13 +309,17 @@ void stuckiDither(uint8_t *image, uint8_t *output_index, int image_width,
 								(error * 2) /
 									42);
 					}
-					image[pixel_offset + image_width * 6 +
-					      i] =
-						plus_truncate_uchar(
-							image[pixel_offset +
-							      image_width * 6 +
-							      i],
-							(error * 4) / 42);
+					{ // x = x
+						image[pixel_offset +
+						      image_width * 6 + i] =
+							plus_truncate_uchar(
+								image[pixel_offset +
+								      image_width *
+									      6 +
+								      i],
+								(error * 4) /
+									42);
+					}
 					if (x + 1 < image_width) {
 						image[pixel_offset +
 						      image_width * 6 + 3 + i] =
@@ -330,6 +341,102 @@ void stuckiDither(uint8_t *image, uint8_t *output_index, int image_width,
 								      6 + i],
 								(error * 1) /
 									42);
+					}
+				}
+			}
+		}
+	}
+
+	printf(".\r\n");
+}
+
+void atkinsonDither(uint8_t *image, uint8_t *output_index, int image_width,
+		    int image_height)
+{
+	const char *TAG = "Dithering";
+	ESP_LOGI(TAG, "start");
+	for (int y = 0; y < image_height; y++) {
+		// 每行结束后让出 CPU
+		if (y % 10 == 0) { // 可以尝试让出 CPU 的频率，比如每 10 行
+			printf(".");
+			fflush(stdout);
+			taskYIELD(); // 或者 vTaskDelay(1)
+		}
+
+		for (int x = 0; x < image_width; x++) {
+			//taskYIELD(); // 或者 vTaskDelay(1) 来让出 CPU
+
+			uint8_t *currentPixel =
+				image + (y * image_width + x) * 3;
+			uint8_t index = FindNearestColor(currentPixel);
+			output_index[y * image_width + x] = index;
+
+			for (int i = 0; i < 3; i++) { //RGB
+				//计算误差
+				int error = (currentPixel[i] & 0xff) -
+					    (palette[index][i] & 0xff);
+				//扩散误差
+				int pixel_offset = (y * image_width + x) * 3;
+				if (x + 1 < image_width) {
+					image[pixel_offset + 3 + i] =
+						plus_truncate_uchar(
+							image[pixel_offset + 3 +
+							      i],
+							(error * 1) / 8);
+				}
+				if (x + 2 < image_width) {
+					image[pixel_offset + 6 + i] =
+						plus_truncate_uchar(
+							image[pixel_offset + 6 +
+							      i],
+							(error * 1) / 8);
+				}
+				if (y + 1 < image_height) {
+					if (x - 1 > 0) {
+						image[pixel_offset +
+						      image_width * 3 - 3 + i] =
+							plus_truncate_uchar(
+								image[pixel_offset +
+								      image_width *
+									      3 -
+								      3 + i],
+								(error * 1) /
+									8);
+					}
+					{ // x = x
+						image[pixel_offset +
+						      image_width * 3 + i] =
+							plus_truncate_uchar(
+								image[pixel_offset +
+								      image_width *
+									      3 +
+								      i],
+								(error * 1) /
+									8);
+					}
+					if (x + 1 < image_width) {
+						image[pixel_offset +
+						      image_width * 3 + 3 + i] =
+							plus_truncate_uchar(
+								image[pixel_offset +
+								      image_width *
+									      3 +
+								      3 + i],
+								(error * 1) /
+									8);
+					}
+				}
+				if (y + 2 < image_height) {
+					{ // x = x
+						image[pixel_offset +
+						      image_width * 6 + i] =
+							plus_truncate_uchar(
+								image[pixel_offset +
+								      image_width *
+									      6 +
+								      i],
+								(error * 1) /
+									8);
 					}
 				}
 			}
