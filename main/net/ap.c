@@ -1,3 +1,14 @@
+/**
+ * @file ap.c
+ * @author zhaitao (zhaitao.as@outlook.com)
+ * @brief 
+ * @version 0.1
+ * @date 2024-11-01
+ * 
+ * @copyright zhaitao.as@outlook.com (c) 2024
+ * 
+ */
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
