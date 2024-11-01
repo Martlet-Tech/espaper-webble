@@ -15,7 +15,6 @@
 #define CS_MASK_SLAVE 0x10
 #define CS_MASK_MASTER_SLAVE 0x11
 
-#define CHUNK_SIZE 4096 * 2
 
 void delayms(unsigned int delayTime);
 unsigned char spiTransmitCommand(unsigned char commandBuf);

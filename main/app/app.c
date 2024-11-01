@@ -1,7 +1,7 @@
 #include "app.h"
 
-#include "EL133UF1.h"
-#include "comm.h"
+//#include "EL133UF1.h"
+//#include "comm.h"
 #include "pindefine.h"
 
 #include "driver/gpio.h"

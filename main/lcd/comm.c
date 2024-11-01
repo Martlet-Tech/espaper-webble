@@ -28,6 +28,8 @@
 #include "freertos/task.h"
 #include "pindefine.h"
 
+#include "app.h"
+
 #define TAG "EPD-COMM"
 
 extern spi_device_handle_t spi;
@@ -55,15 +57,17 @@ void EPD_IO_WriteDataBytes(const unsigned char *bytes, unsigned int length)
 {
 	esp_err_t ret;
 	spi_transaction_t t;
-	const unsigned int chunk_size = CHUNK_SIZE; // 每次传输的最大数据大小（字节）
-	unsigned int bytes_left = length;	    // 剩余未传输的数据
-	unsigned int offset = 0;		    // 当前偏移量
+	const unsigned int chunk_size =
+		CHUNK_SIZE; // 每次传输的最大数据大小（字节）
+	unsigned int bytes_left = length; // 剩余未传输的数据
+	unsigned int offset = 0; // 当前偏移量
 
 	while (bytes_left > 0) {
 		// 计算本次传输的数据量（最多为 chunk_size 字节）
-		unsigned int current_chunk = (bytes_left > chunk_size) ? chunk_size : bytes_left;
+		unsigned int current_chunk =
+			(bytes_left > chunk_size) ? chunk_size : bytes_left;
 
-		memset(&t, 0, sizeof(t));     // 清空事务结构体
+		memset(&t, 0, sizeof(t)); // 清空事务结构体
 		t.length = 8 * current_chunk; // 当前数据段的长度，单位为 bit
 		t.tx_buffer = bytes + offset; // 指向当前要发送的数据段
 
@@ -72,7 +76,9 @@ void EPD_IO_WriteDataBytes(const unsigned char *bytes, unsigned int length)
 		if (ret == ESP_OK) {
 			// ESP_LOGI(TAG, "Data chunk sent successfully, bytes_left = %d", bytes_left);
 		} else {
-			ESP_LOGE(TAG, "Failed to send data chunk, chunk size = %d", current_chunk);
+			ESP_LOGE(TAG,
+				 "Failed to send data chunk, chunk size = %d",
+				 current_chunk);
 			return; // 如果传输失败，提前退出
 		}
 
@@ -87,7 +93,9 @@ void EPD_IO_Write_byte(const unsigned char data)
 	EPD_IO_WriteDataBytes(&data, 1);
 }
 
-void EPD_IO_WriteCommandData_2CH(const unsigned char cmd, const unsigned char *data, unsigned int data_length, unsigned int cs_mask)
+void EPD_IO_WriteCommandData_2CH(const unsigned char cmd,
+				 const unsigned char *data,
+				 unsigned int data_length, unsigned int cs_mask)
 {
 	if (cs_mask == CS_MASK_MASTER_SLAVE) {
 		setGpioLevel(PIN_CS_M, 0);
