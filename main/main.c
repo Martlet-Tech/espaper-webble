@@ -39,7 +39,7 @@
 #include "pindefine.h"
 #include "EL133UF1.h"
 #include "img_prcs.h"
-#include "util.h"
+#include "system.h"
 
 void app_main(void)
 {

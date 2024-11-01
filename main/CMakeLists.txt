@@ -1,7 +1,7 @@
 idf_component_register(
 	SRCS 		"main.c"
 			"fs.c"
-			"util.c"
+			"system.c"
 			"app/app.c"
 			"lcd/comm.c"
 			"lcd/EL133UF1.c"
