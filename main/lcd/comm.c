@@ -39,9 +39,6 @@ void delayms(unsigned int delayTime)
 
 void setGpioLevel(unsigned char pinNumber, unsigned char voltageLevel)
 {
-	//==== Set GPIO voltage level ====
-	// APP_INFO("%s, gpio num: %d\n", __func__, pinNumber);
-	// printf("gpio num %d\r\n", pinNumber);
 	gpio_set_level(pinNumber, voltageLevel);
 }
 
@@ -61,7 +58,6 @@ void EPD_IO_WriteDataBytes(const unsigned char *bytes, unsigned int length)
 	const unsigned int chunk_size = CHUNK_SIZE; // 每次传输的最大数据大小（字节）
 	unsigned int bytes_left = length;	    // 剩余未传输的数据
 	unsigned int offset = 0;		    // 当前偏移量
-	//ESP_LOGI(TAG, "%d bytes of data to be sent", length);
 
 	while (bytes_left > 0) {
 		// 计算本次传输的数据量（最多为 chunk_size 字节）
@@ -84,8 +80,6 @@ void EPD_IO_WriteDataBytes(const unsigned char *bytes, unsigned int length)
 		bytes_left -= current_chunk;
 		offset += current_chunk;
 	}
-
-	//ESP_LOGI(TAG, "data send finish");
 }
 
 void EPD_IO_Write_byte(const unsigned char data)

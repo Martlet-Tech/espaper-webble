@@ -35,17 +35,15 @@
 #include "ap.h"
 #include "app.h"
 #include "http_server.h"
-#include "file.h"
+#include "fs.h"
 #include "pindefine.h"
 #include "EL133UF1.h"
 #include "img_prcs.h"
-
-static const char *TAG = "main";
+#include "util.h"
 
 void app_main(void)
 {
 	esp_err_t ret;
-	heap_caps_print_heap_info(MALLOC_CAP_SPIRAM);
 
 	// Initialize NVS
 	ret = nvs_flash_init();
@@ -64,31 +62,26 @@ void app_main(void)
 	gpio_set_level(PIN_SW46, 1);
 	vTaskDelay(200 / portTICK_PERIOD_MS);
 
-	heap_caps_print_heap_info(MALLOC_CAP_SPIRAM);
-
 	// 挂载 SPIFFS
 	init_spiffs();
 
 	sdcard_mount();
 
-	ret = sdcard_test();
-	if (ret != ESP_OK) {
-		// TODO show sdcard error
-	}
+	ESP_ERROR_CHECK(sdcard_test());
 
 	wifi_init_softap();
 
 	// 启动 HTTP 服务器和其他初始化
-	vTaskDelay(500 / portTICK_PERIOD_MS);
 	start_http_server();
 
 	//app_start();
 	EL133UF1_Init();
 
-	show_start_screen();
+	vTaskDelay(1000 / portTICK_PERIOD_MS);
 
-	ESP_LOGI(TAG, "infini loop");
-	while (1) {
-		vTaskDelay(200 / portTICK_PERIOD_MS);
-	}
+	show_ram_space("main: before show_start_screen");
+
+	show_start_screen();
+	//display_jpg_file("/sdcard/upload.jpg");
+	show_ram_space("before exit main");
 }

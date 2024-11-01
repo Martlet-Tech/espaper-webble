@@ -1,6 +1,6 @@
 idf_component_register(
 	SRCS 		"main.c"
-			"file.c"
+			"fs.c"
 			"util.c"
 			"app/app.c"
 			"lcd/comm.c"

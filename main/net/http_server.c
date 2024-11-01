@@ -7,7 +7,7 @@
 #include "esp_http_server.h"
 #include "esp_vfs_fat.h"
 #include "sdmmc_cmd.h"
-#include "file.h"
+#include "fs.h"
 #include "util.h"
 #include "img_prcs.h"
 #include "esp_timer.h"
@@ -29,12 +29,12 @@ void reset_cache_timer();
 esp_err_t index_get_handler(httpd_req_t *req)
 {
 	// 如果 HTML 缓存存在，直接返回缓存内容
-	if (html_cache != NULL) {
+	/*if (html_cache != NULL) {
 		ESP_LOGI(TAG, "Serving HTML from PSRAM cache.");
 		httpd_resp_send(req, html_cache, html_cache_size);
 		reset_cache_timer(); // 重置定时器
 		return ESP_OK;
-	}
+	}*/
 
 	// 否则，读取文件并缓存
 	FILE *f = fopen(SPIFFS_MOUNT_POINT "/index.html", "r");
@@ -66,8 +66,10 @@ esp_err_t index_get_handler(httpd_req_t *req)
 
 	httpd_resp_send(req, html_cache, html_cache_size); // 发送响应
 
-	init_cache_timer(); // 初始化定时器
-	reset_cache_timer(); // 启动定时器
+	//init_cache_timer(); // 初始化定时器
+	//reset_cache_timer(); // 启动定时器
+
+	free(html_cache);
 
 	return ESP_OK;
 }
@@ -161,37 +163,6 @@ struct async_resp_arg {
 	int fd;
 };
 
-/*static void ws_async_send(void *arg)
-{
-	static const char *data = "Async data";
-	struct async_resp_arg *resp_arg = arg;
-	httpd_handle_t hd = resp_arg->hd;
-	int fd = resp_arg->fd;
-	httpd_ws_frame_t ws_pkt;
-	memset(&ws_pkt, 0, sizeof(httpd_ws_frame_t));
-	ws_pkt.payload = (uint8_t *)data;
-	ws_pkt.len = strlen(data);
-	ws_pkt.type = HTTPD_WS_TYPE_TEXT;
-
-	httpd_ws_send_frame_async(hd, fd, &ws_pkt);
-	free(resp_arg);
-}*/
-
-/*static esp_err_t trigger_async_send(httpd_handle_t handle, httpd_req_t *req)
-{
-	struct async_resp_arg *resp_arg = malloc(sizeof(struct async_resp_arg));
-	if (resp_arg == NULL) {
-		return ESP_ERR_NO_MEM;
-	}
-	resp_arg->hd = req->handle;
-	resp_arg->fd = httpd_req_to_sockfd(req);
-	esp_err_t ret = httpd_queue_work(handle, ws_async_send, resp_arg);
-	if (ret != ESP_OK) {
-		free(resp_arg);
-	}
-	return ret;
-}*/
-
 static esp_err_t favicon_get_handler(httpd_req_t *req)
 {
 	// 发送空的响应或图标文件
@@ -225,6 +196,7 @@ void start_http_server()
 {
 	// 创建 HTTP 服务器
 	httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+	config.stack_size = 8192;
 	config.send_wait_timeout = 15; // 15 秒超时
 	config.max_resp_headers = 16; // 增加最大响应头数量
 	config.max_open_sockets = 4; // 限制最大并发连接数
@@ -236,10 +208,8 @@ void start_http_server()
 	if (httpd_start(&server, &config) == ESP_OK) {
 		ESP_LOGI(TAG, "httpd_start  OK");
 		httpd_register_uri_handler(server, &index_uri);
-		//httpd_register_uri_handler(server, &css_uri);
 		httpd_register_uri_handler(server, &upload_uri);
 		httpd_register_uri_handler(server, &favicon_uri);
-		httpd_register_uri_handler(server, &status_uri);
 	}
 }
 
@@ -411,16 +381,6 @@ esp_err_t upload_post_handler(httpd_req_t *req)
 	ESP_LOGI(TAG, "display_jpg_file execution time: %lld us\n",
 		 time_elapsed);
 
-	//trigger_async_send(req->handle, req);
-
-#if 0 // TODO
-	const char *ws_msg_lcd_finish = "lcd_finish";
-	httpd_ws_frame_t ws_frame;
-	ws_frame.type = HTTPD_WS_TYPE_TEXT;
-	ws_frame.payload = (uint8_t *)ws_msg_lcd_finish;
-	ws_frame.len = strlen(ws_msg_lcd_finish);
-	httpd_ws_send_frame(req, &ws_frame);
-#endif
 	is_busy = false;
 
 	return ESP_OK;
