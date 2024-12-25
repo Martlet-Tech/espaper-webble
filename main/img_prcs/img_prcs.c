@@ -619,7 +619,7 @@ void draw_qrcode_on_ram(uint8_t *fb1)
 			    qrbits_buf);
 	ESP_LOGI(TAG, "qrencode side = %d", qr_side);
 
-	draw_qr_code(10, 1510, 100, qr_side, qrbits_buf, fb1);
+	draw_qr_code(20, 1500, 100, qr_side, qrbits_buf, fb1);
 
 	// draw webside qr
 	esp_netif_ip_info_t ip_info;
@@ -639,7 +639,7 @@ void draw_qrcode_on_ram(uint8_t *fb1)
 		qr_encode(QR_LEVEL_M, 0, str_web, strlen(str_web), qrbits_buf);
 	ESP_LOGI(TAG, "qrencode side = %d", qr_side);
 
-	draw_qr_code(1000, 1510, 100, qr_side, qrbits_buf, fb1);
+	draw_qr_code(1100, 1500, 100, qr_side, qrbits_buf, fb1);
 
 	// put text
 	char text_wifi[256];
