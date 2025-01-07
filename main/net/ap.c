@@ -37,12 +37,11 @@ void mac_to_str(const uint8_t *mac, char *mac_str)
 		 mac[2], mac[3], mac[4], mac[5]);
 }
 
-const char charset[] =
-	"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-
 // 生成随机密码的函数
 void generate_random_password(char *password, size_t length)
 {
+	char charset[] =
+		"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 	for (size_t i = 0; i < length; i++) {
 		int key = esp_random() % (sizeof(charset) - 1);
 		key = key;
@@ -108,12 +107,15 @@ void wifi_init_softap()
 
 	// 将 MAC 地址转换为字符串，作为 SSID 的一部分
 	char ssid[32];
-	snprintf(ssid, sizeof(ssid), "EPD_AP_%02X%02X%02X", mac[3], mac[4],
-		 mac[5]);
+	snprintf(ssid, sizeof(ssid), "EPD_%02X%02X%02X_%02X%02X%02X", mac[0],
+		 mac[1], mac[2], mac[3], mac[4], mac[5]);
 
 	// 生成随机密码
-	char password[9]; // 8位随机密码 + '\0'
-	generate_random_password(password, 8);
+	char password[9];
+	// 8位随机密码 + '\0'
+	//generate_random_password(password, 8);
+	memset(password, '0', 8);
+	password[8] = 0;
 
 	// 配置 Wi-Fi AP 参数
 	wifi_config_t wifi_config = { .ap = {
