@@ -14,10 +14,18 @@
 
 #include "esp_err.h"
 
+extern int display_debug;
+
 esp_err_t display_jpg_file(const char *filename);
 
+typedef void (*draw_px_func_t)(int16_t x, int16_t y, uint32_t color, void *fb);
+
 void draw_px_ug_port(int16_t x, int16_t y, uint32_t color, void *fb);
+void draw_px_24bpp(int16_t x, int16_t y, uint32_t color, void *fb);
 
 void show_start_screen(void);
+
+void draw_qr_code(uint16_t x, uint16_t y, int width_t, int side,
+		  uint8_t *bitdata, void *fb, draw_px_func_t draw_px);
 
 #endif

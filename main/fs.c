@@ -245,3 +245,31 @@ uint8_t *SD_MMC_ReadFileToPsram(const char *path, uint32_t *file_size)
 
 	return image_buffer;
 }
+
+esp_err_t write_to_sdcard(const char *filepath, const char *content)
+{
+	// 创建并打开文件
+	FILE *f = fopen(filepath, "w+");
+	if (f == NULL) {
+		ESP_LOGE(TAG, "Failed to open file for writing");
+		sdcard_unmount();
+		return ESP_FAIL;
+	}
+
+	// 写入内容到文件
+	int fret = fprintf(f, "%s", content);
+	if (fret < 0) {
+		// fprintf 失败
+		ESP_LOGE(TAG, "Failed to write to file");
+		fclose(f);
+		sdcard_unmount();
+		return ESP_FAIL;
+	} else if (fret != strlen(content)) {
+		// 写入的字符数与字符串长度不符，可能存在部分写入失败的情况
+		ESP_LOGW(TAG, "Partial write to file: expected %zu, wrote %d",
+			 strlen(content), fret);
+	}
+
+	fclose(f);
+	return ESP_OK;
+}

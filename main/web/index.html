@@ -252,13 +252,9 @@
 
     .toast {
       padding: 20px;
-      /* 内边距 */
       border-radius: 5px;
-      /* 边框圆角 */
       box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
-      /* 阴影 */
       text-align: center;
-      /* 文本居中 */
       max-width: 300px;
       color: white;
       font-size: 16px;
@@ -276,15 +272,40 @@
     .toast.warning {
       background-color: #e6a23c;
     }
+
+    #languageSwitcher {
+      padding: 8px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      background-color: #f9f9f9;
+      font-size: 16px;
+      cursor: pointer;
+      outline: none;
+      transition: border-color 0.3s ease;
+    }
+
+    #languageSwitcher:focus {
+      border-color: #007bff;
+    }
   </style>
 </head>
 
 <body>
   <div class="container">
+    <select id="languageSwitcher">
+      <option value="en">English</option>
+      <option value="zh">中文</option>
+      <option value="kr">한국어</option>
+    </select>
+
+    <!-- <h1 id="title"></h1>
+    <p id="description"></p> -->
+
     <div class="image-preview"></div>
 
-    <label for="upload" class="upload-button">Select Image to Upload</label>
+    <label for="upload" class="upload-button" id="upload-label">Select Image to Upload</label>
     <input id="upload" type="file" accept="image/png,image/jpeg,image/bmp" />
+
     <!-- 提示信息蒙层，初始时隐藏 -->
     <div id="overlay" style="
           display: none;
@@ -329,14 +350,50 @@
       const url = "https://www.yes-lcd.com/"; // 指定的网页链接
       const title = "YES OPTOELECTRONICS CO.,LTD."; // 指定的网页标题
 
-      // 针对IE浏览器的添加收藏功能
       if (window.external && 'addFavorite' in window.external) {
-        window.external.addFavorite(url, title);
+        window.external.addFavorite(url, title); // IE
       } else {
-        // 非IE浏览器的提示
-        alert('按 Ctrl+D (或 Cmd+D) 将 ' + title + ' 加入收藏！');
+        alert('按 Ctrl+D (或 Cmd+D) 将 ' + title + ' 加入收藏！'); // 非IE
       }
     }
+
+    let msg_upload_success = '';
+    let msg_upload_fail = '';
+    let msg_server_error = '';
+
+    const loadLanguage = (lang) => {
+      fetch(`/lang_${lang}.json`)
+        .then((response) => response.json())
+        .then((data) => {
+          //document.getElementById("title").textContent = data.title;
+          //document.getElementById("description").textContent = data.description;
+          document.getElementById("upload-label").innerHTML = data.upload_label;
+          msg_upload_success = data.msg_upload_success;
+          msg_upload_fail = data.msg_upload_fail;
+          msg_server_error = data.msg_server_error;
+        })
+        .catch((error) => console.error("Error loading language file:", error));
+    };
+
+    const saveLanguagePreference = (lang) => {
+      localStorage.setItem("preferredLanguage", lang);
+    };
+
+    const getLanguagePreference = () => {
+      return localStorage.getItem("preferredLanguage") || "en";
+    };
+
+    document.getElementById("languageSwitcher").addEventListener("change", (event) => {
+      const lang = event.target.value;
+      saveLanguagePreference(lang);
+      loadLanguage(lang);
+    });
+
+    document.addEventListener("DOMContentLoaded", () => {
+      const preferredLanguage = getLanguagePreference();
+      document.getElementById("languageSwitcher").value = preferredLanguage;
+      loadLanguage(preferredLanguage);
+    });
 
     // 定义全局变量 simpleCrop
     var simpleCrop = null;
@@ -368,11 +425,11 @@
                 document.body.removeChild(previousResultCanvas);
               }
 
-              previewContainer.innerHTML = ""; // 清空容器中的现有内容
+              previewContainer.innerHTML = "";
               previewContainer.appendChild($resultCanvas); // 将新画布添加到容器中
 
-              $resultCanvas.style.maxWidth = "100%"; // 画布最大宽度为100%
-              $resultCanvas.style.maxHeight = "100%"; // 画布最大高度为100%
+              $resultCanvas.style.maxWidth = "100%";
+              $resultCanvas.style.maxHeight = "100%";
 
               submit($resultCanvas);
             },
@@ -430,46 +487,22 @@
               try {
                 let data = JSON.parse(xhr.response);
                 if (data.code === 200) {
-                  showToast(
-                    "Upload successfully, please wait for the device to download the picture. It takes about a minute to display the picture.",
-                    "success"
-                  );
-                  // TODO 开始检查状态 
-                  // checkStatus();
+                  showToast(msg_upload_success, "success"); // 显示成功提示
                 } else {
-                  showToast(data.msg, "error");
+                  showToast(msg_upload_fail, "error");
                 }
               } catch (e) {
-                showToast("Unexpected server response format", "error");
+                showToast(msg_server_error, "error");
               }
             } else {
-              showToast("Upload failed, please try again!", "error");
+              showToast(msg_upload_fail, "error");
             }
           };
 
           xhr.onerror = function () {
-            showToast("Upload failed, please try again!", "error"); // 显示失败提示
+            showToast(msg_upload_fail, "error"); // 显示失败提示
           };
           xhr.send(formData);
-
-          // 检查处理状态的函数
-          function checkStatus() {
-            fetch('/status')
-              .then(response => response.text())
-              .then(status => {
-                document.getElementById('status').innerText = '当前处理阶段: ' + status;
-                showToast('当前处理阶段: ' + status, 'success');
-
-                // 如果处理未完成，继续请求状态
-                if (status !== 'completed') {
-                  setTimeout(checkStatus, 2000); // 每2秒请求一次
-                }
-              })
-              .catch(error => {
-                console.error('Error:', error);
-                showToast('处理过程出错: ' + status, 'error');
-              });
-          }
         },
         type,
         quality
@@ -512,21 +545,32 @@
       }, seconds);
     }
 
+    function hideToast() {
+      const toast = document.getElementById("toast");
+      const overlay = document.getElementById("overlay");
+
+      // 隐藏提示和蒙层
+      if (toast.style.display === "block" || overlay.style.display === "block") {
+        toast.style.display = "none";
+        overlay.style.display = "none";
+      }
+    }
+
     //组件更新
-    // var $update = document.querySelector("#update");
-    // $update.addEventListener("click", function () {
-    //   simpleCrop.updateBox({
-    //     cropSizePercent: 0.7,
-    //     size: {
-    //       width: 600,
-    //       height: 600,
-    //     },
-    //   });
-    //   simpleCrop.initBoxBorder({
-    //     borderColor: "#0BFF00",
-    //   });
-    //   simpleCrop.show();
-    // });
+    /*var $update = document.querySelector("#update");
+    $update.addEventListener("click", function () {
+      simpleCrop.updateBox({
+        cropSizePercent: 0.7,
+        size: {
+          width: 600,
+          height: 600,
+        },
+      });
+      simpleCrop.initBoxBorder({
+        borderColor: "#0BFF00",
+      });
+      simpleCrop.show();
+    });*/
   </script>
 
   <script>

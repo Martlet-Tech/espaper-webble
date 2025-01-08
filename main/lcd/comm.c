@@ -28,8 +28,6 @@
 #include "freertos/task.h"
 #include "pindefine.h"
 
-#include "app.h"
-
 #define TAG "EPD-COMM"
 
 extern spi_device_handle_t spi;

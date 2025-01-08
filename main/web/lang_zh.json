@@ -1,0 +1,8 @@
+{
+  "title": "欢迎",
+  "description": "这是一个托管在 ESP32 上的静态页面。",
+  "upload_label": "选择图片上传",
+  "msg_upload_success": "上传你成功, 请等待设备显示出图片. 大概需要1分钟.",
+  "msg_upload_fail": "上传失败, 请重试",
+  "msg_server_error": "未知的服务器响应"
+}

@@ -23,6 +23,7 @@
 
 #define PALETTE_SIZE 6
 const char *TAG = "IMG_PRCS";
+int display_debug = 0;
 
 void stuckiDither(uint8_t *image, uint8_t *output_index, int image_width,
 		  int image_height);
@@ -537,8 +538,33 @@ void draw_px_ug_port(int16_t x, int16_t y, uint32_t color, void *fb)
 	}
 }
 
+void draw_px_24bpp(int16_t x, int16_t y, uint32_t color, void *fb)
+{
+	if (fb) {
+		// Calculate the memory location of the pixel
+		uint8_t *pixel_addr = ((uint8_t *)fb) + (y * EPD_WIDTH + x) * 3;
+
+		// Extract the RGB components from the 24-bit color
+		uint8_t red = (color >> 16) & 0xFF;
+		uint8_t green = (color >> 8) & 0xFF;
+		uint8_t blue = color & 0xFF;
+
+		// Assign the RGB components to the framebuffer
+		pixel_addr[0] = red;
+		pixel_addr[1] = green;
+		pixel_addr[2] = blue;
+	} else {
+		ESP_LOGE("draw_px_ug_port_24bpp", "fb not initial");
+	}
+
+	// Yield periodically to avoid watchdog resets in long-running loops
+	if (((y % 80) == 0) || ((x % 80) == 0)) {
+		vPortYield();
+	}
+}
+
 void draw_qr_code(uint16_t x, uint16_t y, int width_t, int side,
-		  uint8_t *bitdata, void *fb)
+		  uint8_t *bitdata, void *fb, draw_px_func_t draw_px)
 {
 	//PCD8544_Clear();
 	int i = 0;
@@ -546,28 +572,21 @@ void draw_qr_code(uint16_t x, uint16_t y, int width_t, int side,
 	int a = 0;
 	int l = 0;
 	int n = 0;
-	int OUT_FILE_PIXEL_PRESCALER = 1;
+	int scale = 1;
 
-	OUT_FILE_PIXEL_PRESCALER = width_t / side;
+	memset(fb, 0xff, width_t * width_t);
+
+	scale = width_t / side;
 
 	for (i = 0; i < side; i++) {
 		for (j = 0; j < side; j++) {
 			a = j * side + i;
 
 			if ((bitdata[a / 8] & (1 << (7 - a % 8)))) {
-				for (l = 0; l < OUT_FILE_PIXEL_PRESCALER; l++) {
-					for (n = 0;
-					     n < OUT_FILE_PIXEL_PRESCALER;
-					     n++) {
-						draw_px_ug_port(
-							x +
-								OUT_FILE_PIXEL_PRESCALER *
-									i +
-								l,
-							y +
-								OUT_FILE_PIXEL_PRESCALER *
-									(j) +
-								n,
+				for (l = 0; l < scale; l++) {
+					for (n = 0; n < scale; n++) {
+						draw_px(x + scale * i + l,
+							y + scale * (j) + n,
 							BLACK, fb);
 					}
 				}
@@ -578,6 +597,10 @@ void draw_qr_code(uint16_t x, uint16_t y, int width_t, int side,
 
 void draw_qrcode_on_ram(uint8_t *fb1)
 {
+	if (display_debug == 0) {
+		return;
+	}
+
 	const size_t str_len = 128;
 	UG_GUI ug;
 	int qr_side = 0;
@@ -619,7 +642,7 @@ void draw_qrcode_on_ram(uint8_t *fb1)
 			    qrbits_buf);
 	ESP_LOGI(TAG, "qrencode side = %d", qr_side);
 
-	draw_qr_code(20, 1500, 100, qr_side, qrbits_buf, fb1);
+	draw_qr_code(20, 1500, 100, qr_side, qrbits_buf, fb1, draw_px_ug_port);
 
 	// draw webside qr
 	esp_netif_ip_info_t ip_info;
@@ -639,7 +662,8 @@ void draw_qrcode_on_ram(uint8_t *fb1)
 		qr_encode(QR_LEVEL_M, 0, str_web, strlen(str_web), qrbits_buf);
 	ESP_LOGI(TAG, "qrencode side = %d", qr_side);
 
-	draw_qr_code(1100, 1500, 100, qr_side, qrbits_buf, fb1);
+	draw_qr_code(1100, 1500, 100, qr_side, qrbits_buf, fb1,
+		     draw_px_ug_port);
 
 	// put text
 	char text_wifi[256];

@@ -24,30 +24,88 @@
 #include "esp_timer.h"
 #include "esp_event.h"
 
+#define BUFFER_SIZE 1024
+#define MAX_FILE_SIZE (4 * 1024 * 1024) // 假设文件大小最大为 2MB
+
+typedef struct {
+	char *data; // 用于存储文件数据的 PSRAM 缓存
+	size_t size; // 当前缓存大小
+	size_t offset; // 当前写入的偏移量
+} psram_buffer_t;
+
 static const char *TAG = "http_server";
 
 static char *html_cache = NULL; // PSRAM 中的缓存指针
 static size_t html_cache_size = 0; // 缓存的大小
-static esp_timer_handle_t cache_timer = NULL; // 定时器句柄
 
 bool is_busy = false;
 
-void cache_timer_callback(void *arg);
-void init_cache_timer();
-void reset_cache_timer();
+extern char processing_stage[];
+
+// 初始化 PSRAM 缓存
+static psram_buffer_t *init_psram_buffer(size_t size)
+{
+	psram_buffer_t *buffer = malloc(sizeof(psram_buffer_t));
+	if (!buffer) {
+		ESP_LOGE(TAG, "Failed to allocate memory for buffer structure");
+		return NULL;
+	}
+
+	// 分配 PSRAM 缓存
+	buffer->data = heap_caps_malloc(size, MALLOC_CAP_SPIRAM);
+	if (!buffer->data) {
+		ESP_LOGE(TAG, "Failed to allocate PSRAM buffer");
+		free(buffer);
+		return NULL;
+	}
+
+	buffer->size = size;
+	buffer->offset = 0;
+
+	return buffer;
+}
+
+// 释放 PSRAM 缓存
+static void free_psram_buffer(psram_buffer_t *buffer)
+{
+	if (buffer) {
+		if (buffer->data) {
+			heap_caps_free(buffer->data);
+		}
+		free(buffer);
+	}
+}
+
+static int find_jpeg_start(const unsigned char *data, size_t data_len)
+{
+	// 定义Content-Type字段和分隔符的标记
+	const char *content_type = "Content-Type: image/jpeg";
+	const char *double_crlf = "\r\n\r\n";
+
+	// 查找Content-Type的结束位置
+	const unsigned char *pos =
+		memmem(data, data_len, content_type, strlen(content_type));
+	if (pos == NULL) {
+		printf("Content-Type not found\n");
+		return -1;
+	}
+
+	// 查找Content-Type行后的双换行符位置
+	pos = memmem(pos + strlen(content_type),
+		     data_len - (pos - data + strlen(content_type)),
+		     double_crlf, strlen(double_crlf));
+	if (pos == NULL) {
+		printf("Double CRLF not found after Content-Type\n");
+		return -1;
+	}
+
+	// JPEG数据开始的位置是双换行符的末尾
+	return (pos - data) + strlen(double_crlf);
+}
 
 /* 根路径处理函数 */
-esp_err_t index_get_handler(httpd_req_t *req)
+static esp_err_t index_get_handler(httpd_req_t *req)
 {
-	// 如果 HTML 缓存存在，直接返回缓存内容
-	/*if (html_cache != NULL) {
-		ESP_LOGI(TAG, "Serving HTML from PSRAM cache.");
-		httpd_resp_send(req, html_cache, html_cache_size);
-		reset_cache_timer(); // 重置定时器
-		return ESP_OK;
-	}*/
-
-	// 否则，读取文件并缓存
 	FILE *f = fopen(SPIFFS_MOUNT_POINT "/index.html", "r");
 	if (f == NULL) {
 		ESP_LOGE(TAG, "Unable to open index.html file.");
@@ -77,181 +135,12 @@ esp_err_t index_get_handler(httpd_req_t *req)
 
 	httpd_resp_send(req, html_cache, html_cache_size); // 发送响应
 
-	//init_cache_timer(); // 初始化定时器
-	//reset_cache_timer(); // 启动定时器
-
 	free(html_cache);
 
 	return ESP_OK;
 }
 
-httpd_uri_t index_uri = { .uri = "/", // 根路径
-			  .method = HTTP_GET, // 处理 GET 请求
-			  .handler = index_get_handler, // 处理函数
-			  .user_ctx = NULL };
-
-/* CSS处理函数 */
-esp_err_t css_get_handler(httpd_req_t *req)
-{
-	/* 打开 SPIFFS 中的 index.html 文件 */
-	FILE *f = fopen(SPIFFS_MOUNT_POINT "/styles.css", "r");
-	if (f == NULL) {
-		ESP_LOGE(TAG, "无法打开 index.html 文件");
-		/* 发送404错误页面 */
-		httpd_resp_send_404(req);
-		return ESP_FAIL;
-	}
-
-	char line[256];
-	/* 逐行读取文件内容并发送到客户端 */
-	while (fgets(line, sizeof(line), f) != NULL) {
-		httpd_resp_sendstr_chunk(req, line);
-	}
-	/* 发送完成并关闭文件 */
-	fclose(f);
-	httpd_resp_sendstr_chunk(req, NULL); // 发送完最后一块数据
-	return ESP_OK;
-}
-
-httpd_uri_t css_uri = { .uri = "/styles.css",
-			.method = HTTP_GET,
-			.handler = css_get_handler,
-			.user_ctx = NULL };
-
-#define BUFFER_SIZE 1024
-#define MAX_FILE_SIZE (4 * 1024 * 1024) // 假设文件大小最大为 2MB
-
-typedef struct {
-	char *data; // 用于存储文件数据的 PSRAM 缓存
-	size_t size; // 当前缓存大小
-	size_t offset; // 当前写入的偏移量
-} psram_buffer_t;
-
-// 初始化 PSRAM 缓存
-psram_buffer_t *init_psram_buffer(size_t size)
-{
-	psram_buffer_t *buffer = malloc(sizeof(psram_buffer_t));
-	if (!buffer) {
-		ESP_LOGE(TAG, "Failed to allocate memory for buffer structure");
-		return NULL;
-	}
-
-	// 分配 PSRAM 缓存
-	buffer->data = heap_caps_malloc(size, MALLOC_CAP_SPIRAM);
-	if (!buffer->data) {
-		ESP_LOGE(TAG, "Failed to allocate PSRAM buffer");
-		free(buffer);
-		return NULL;
-	}
-
-	buffer->size = size;
-	buffer->offset = 0;
-
-	return buffer;
-}
-
-// 释放 PSRAM 缓存
-void free_psram_buffer(psram_buffer_t *buffer)
-{
-	if (buffer) {
-		if (buffer->data) {
-			heap_caps_free(buffer->data);
-		}
-		free(buffer);
-	}
-}
-
-// 上传文件处理程序，存储到 PSRAM
-esp_err_t upload_post_handler(httpd_req_t *req);
-
-httpd_uri_t upload_uri = { .uri = "/upload",
-			   .method = HTTP_POST,
-			   .handler = upload_post_handler,
-			   .user_ctx = NULL };
-
-struct async_resp_arg {
-	httpd_handle_t hd;
-	int fd;
-};
-
-static esp_err_t favicon_get_handler(httpd_req_t *req)
-{
-	// 发送空的响应或图标文件
-	httpd_resp_send(req, "", 0); // 发送空响应
-	return ESP_OK;
-}
-
-// 注册favicon处理程序
-httpd_uri_t favicon_uri = { .uri = "/favicon.ico",
-			    .method = HTTP_GET,
-			    .handler = favicon_get_handler,
-			    .user_ctx = NULL };
-
-extern char processing_stage[];
-
-// 处理状态的 HTTP GET 处理程序
-esp_err_t status_get_handler(httpd_req_t *req)
-{
-	ESP_LOGI("status_get_handler", "status now: %s", processing_stage);
-	httpd_resp_sendstr(req, processing_stage);
-	return ESP_OK;
-}
-
-httpd_uri_t status_uri = { .uri = "/status",
-			   .method = HTTP_GET,
-			   .handler = status_get_handler,
-			   .user_ctx = NULL };
-
-// 启动 HTTP 服务器
-void start_http_server()
-{
-	// 创建 HTTP 服务器
-	httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-	config.stack_size = 8192;
-	config.send_wait_timeout = 15; // 15 秒超时
-	config.max_resp_headers = 16; // 增加最大响应头数量
-	config.max_open_sockets = 4; // 限制最大并发连接数
-	config.send_wait_timeout = 15; // 增加发送超时时间
-
-	httpd_handle_t server = NULL;
-
-	// 启动服务器
-	if (httpd_start(&server, &config) == ESP_OK) {
-		ESP_LOGI(TAG, "httpd_start  OK");
-		httpd_register_uri_handler(server, &index_uri);
-		httpd_register_uri_handler(server, &upload_uri);
-		httpd_register_uri_handler(server, &favicon_uri);
-	}
-}
-
-int find_jpeg_start(const unsigned char *data, size_t data_len)
-{
-	// 定义Content-Type字段和分隔符的标记
-	const char *content_type = "Content-Type: image/jpeg";
-	const char *double_crlf = "\r\n\r\n";
-
-	// 查找Content-Type的结束位置
-	const unsigned char *pos =
-		memmem(data, data_len, content_type, strlen(content_type));
-	if (pos == NULL) {
-		printf("Content-Type not found\n");
-		return -1;
-	}
-
-	// 查找Content-Type行后的双换行符位置
-	pos = memmem(pos + strlen(content_type),
-		     data_len - (pos - data + strlen(content_type)),
-		     double_crlf, strlen(double_crlf));
-	if (pos == NULL) {
-		printf("Double CRLF not found after Content-Type\n");
-		return -1;
-	}
-
-	// JPEG数据开始的位置是双换行符的末尾
-	return (pos - data) + strlen(double_crlf);
-}
-
-esp_err_t upload_post_handler(httpd_req_t *req)
+static esp_err_t upload_post_handler(httpd_req_t *req)
 {
 	if (is_busy) {
 		// 服务器忙碌，返回错误信息
@@ -397,35 +286,103 @@ esp_err_t upload_post_handler(httpd_req_t *req)
 	return ESP_OK;
 }
 
-// 定时器回调函数：释放缓存
-void cache_timer_callback(void *arg)
+static esp_err_t favicon_get_handler(httpd_req_t *req)
 {
-	if (html_cache) {
-		ESP_LOGI(TAG, "Releasing HTML cache from PSRAM.");
-		show_ram_space("cache_timer_callback");
-		heap_caps_free(html_cache); // 释放 PSRAM 缓存
-		html_cache = NULL;
-		html_cache_size = 0;
-	}
+	// 发送空的响应或图标文件
+	httpd_resp_send(req, "", 0); // 发送空响应
+	return ESP_OK;
 }
 
-// 初始化定时器，用于释放缓存
-void init_cache_timer()
+static esp_err_t lang_handler(httpd_req_t *req)
 {
-	if (cache_timer == NULL) {
-		const esp_timer_create_args_t timer_args = {
-			.callback = &cache_timer_callback,
-			.name = "html_cache_timer"
-		};
-		esp_timer_create(&timer_args, &cache_timer);
+	const char *file_path = (const char *)req->user_ctx;
+
+	FILE *file = fopen(file_path, "r");
+	if (!file) {
+		ESP_LOGE(TAG, "Failed to open file: %s", file_path);
+		httpd_resp_send_404(req);
+		return ESP_FAIL;
 	}
+
+	// 设置 Content-Type 为 UTF-8
+	httpd_resp_set_type(req, "application/json");
+	httpd_resp_set_hdr(req, "Content-Type",
+			   "application/json; charset=utf-8");
+
+	char buffer[512];
+	size_t read_bytes;
+	while ((read_bytes = fread(buffer, 1, sizeof(buffer), file)) > 0) {
+		if (httpd_resp_send_chunk(req, buffer, read_bytes) != ESP_OK) {
+			fclose(file);
+			httpd_resp_send_500(req);
+			return ESP_FAIL;
+		}
+	}
+
+	fclose(file);
+	httpd_resp_send_chunk(req, NULL, 0); // 结束块发送
+	return ESP_OK;
 }
 
-// 启动/重置缓存定时器
-void reset_cache_timer()
+// 启动 HTTP 服务器
+void start_http_server()
 {
-	if (cache_timer != NULL) {
-		esp_timer_stop(cache_timer); // 停止当前定时器（如果已在运行）
-		esp_timer_start_once(cache_timer, 120000000); // 60秒（1分钟）
+	// 创建 HTTP 服务器
+	httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+	config.stack_size = 8192;
+	config.send_wait_timeout = 15; // 15 秒超时
+	config.max_resp_headers = 16; // 增加最大响应头数量
+	config.max_open_sockets = 4; // 限制最大并发连接数
+	config.send_wait_timeout = 15; // 增加发送超时时间
+
+	httpd_handle_t server = NULL;
+
+	httpd_uri_t index_uri = { .uri = "/", // 根路径
+				  .method = HTTP_GET, // 处理 GET 请求
+				  .handler = index_get_handler, // 处理函数
+				  .user_ctx = NULL };
+
+	httpd_uri_t upload_uri = { .uri = "/upload",
+				   .method = HTTP_POST,
+				   .handler = upload_post_handler,
+				   .user_ctx = NULL };
+	// 注册favicon处理程序
+	httpd_uri_t favicon_uri = { .uri = "/favicon.ico",
+				    .method = HTTP_GET,
+				    .handler = favicon_get_handler,
+				    .user_ctx = NULL };
+
+	httpd_uri_t lang_zh_uri = {
+		.uri = "/lang_zh.json",
+		.method = HTTP_GET,
+		.handler = lang_handler,
+		.user_ctx = (void *)"/spiffs/lang_zh.json" // 传递文件路径
+	};
+
+	httpd_uri_t lang_en_uri = {
+		.uri = "/lang_en.json",
+		.method = HTTP_GET,
+		.handler = lang_handler,
+		.user_ctx = (void *)"/spiffs/lang_en.json" // 传递文件路径
+	};
+
+	httpd_uri_t lang_kr_uri = {
+		.uri = "/lang_kr.json",
+		.method = HTTP_GET,
+		.handler = lang_handler,
+		.user_ctx = (void *)"/spiffs/lang_kr.json" // 传递文件路径
+	};
+
+	// 启动服务器
+	if (httpd_start(&server, &config) == ESP_OK) {
+		ESP_LOGI(TAG, "httpd_start  OK");
+
+		httpd_register_uri_handler(server, &index_uri);
+		httpd_register_uri_handler(server, &upload_uri);
+		httpd_register_uri_handler(server, &favicon_uri);
+
+		httpd_register_uri_handler(server, &lang_zh_uri);
+		httpd_register_uri_handler(server, &lang_en_uri);
+		httpd_register_uri_handler(server, &lang_kr_uri);
 	}
 }

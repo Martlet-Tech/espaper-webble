@@ -1,0 +1,8 @@
+{
+  "title": "Welcome",
+  "description": "This is a static page hosted on ESP32.",
+  "upload_label": "Select Image to Upload",
+  "msg_upload_success": "장치가 사진을 다운로드하는 것을 기다려 주세요. 사진 표시에는 약 한 분이 걸립니다.",
+  "msg_upload_fail": "다시 시도해 주세요!",
+  "msg_server_error": "서버의 예상치 않은 응답 형식"
+}
