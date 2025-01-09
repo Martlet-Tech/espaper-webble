@@ -24,6 +24,7 @@
 #define PALETTE_SIZE 6
 const char *TAG = "IMG_PRCS";
 int display_debug = 0;
+char processing_stage[20] = "idle"; // 初始阶段;
 
 void stuckiDither(uint8_t *image, uint8_t *output_index, int image_width,
 		  int image_height);
@@ -89,9 +90,6 @@ esp_err_t decode_jpg(uint8_t *inbuff, uint32_t insize, uint8_t *outbuff,
 	return ESP_OK;
 }
 
-char processing_stage[20] = "idle"; // 初始阶段;
-
-const char *TAG_NEWJPEGDEC = "New JPEG DEC";
 esp_err_t display_jpg_file(const char *filename)
 {
 	const char *TAG = "display_jpg_file";

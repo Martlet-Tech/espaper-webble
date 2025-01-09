@@ -14,7 +14,6 @@
 #include "comm.h"
 #include "esp_log.h"
 #include "pindefine.h"
-#include "status.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -116,14 +115,12 @@ void epdHardwareReset(void)
 void EL133UF1_Init(void)
 {
 	setPinCsAll(GPIO_HIGH);
-	ESP_LOGI(TAG, "after cs all high\n");
 	delayms(20);
 
 	epdHardwareReset();
-	ESP_LOGI(TAG, "epdHardwareReset done\r\n");
 
 	checkBusyHigh();
-	ESP_LOGI(TAG, "checkBusyHigh done\r\n");
+	ESP_LOGI(TAG, "EPD reset ok\r\n");
 
 	EPD_IO_WriteCommandData_2CH(AN_TM, AN_TM_V, sizeof(AN_TM_V),
 				    CS_MASK_MASTER);

@@ -55,8 +55,8 @@ void EPD_IO_WriteDataBytes(const unsigned char *bytes, unsigned int length)
 {
 	esp_err_t ret;
 	spi_transaction_t t;
-	const unsigned int chunk_size =
-		CHUNK_SIZE; // 每次传输的最大数据大小（字节）
+	// 每次传输的最大数据大小（字节）
+	const unsigned int chunk_size = CHUNK_SIZE;
 	unsigned int bytes_left = length; // 剩余未传输的数据
 	unsigned int offset = 0; // 当前偏移量
 

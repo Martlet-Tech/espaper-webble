@@ -181,32 +181,6 @@ esp_err_t sdcard_test()
 
 uint8_t *SD_MMC_ReadFileToPsram(const char *path, uint32_t *file_size)
 {
-	/*
-	File file = SD_MMC.open(path);
-	size_t len = 0;
-	uint8_t *image_buffer = NULL;
-	if (file) {
-		len = file.size();
-		//分配PSRAM内存用于存储图像。
-		image_buffer =
-			(uint8_t *)(heap_caps_malloc(len, MALLOC_CAP_SPIRAM));
-		if (image_buffer == NULL) {
-			Serial.println(
-				"DownloadFile Failed, due to heap_caps_malloc failure.");
-			return NULL;
-		}
-
-		file.read(image_buffer, len);
-
-		file.close();
-		*file_size = len;
-		return image_buffer;
-	} else {
-		Serial.println("Failed to open file for reading");
-		return NULL;
-	}
-	*/
-
 	// 打开文件
 	FILE *file = fopen(path, "r");
 	if (file == NULL) {

@@ -200,15 +200,6 @@ static esp_err_t upload_post_handler(httpd_req_t *req)
 	}
 
 	// find file start
-	/*const unsigned char *start_string = (unsigned char *)"\x0d\x0a\x0d\x0a";
-	const void *pos = memmem(psram_buf->data, 1024, start_string, 4);
-	if (pos == NULL) {
-		ESP_LOGE(TAG, "File received has fault");
-	}
-	ptrdiff_t offset_file_start = (const unsigned char *)pos -
-				      (const unsigned char *)(psram_buf->data);
-	offset_file_start += 4;
-	ESP_LOGI(TAG, "File offset = %d", (int)offset_file_start);*/
 	ptrdiff_t offset_file_start =
 		find_jpeg_start((const unsigned char *)(psram_buf->data), 1024);
 
@@ -327,6 +318,7 @@ static esp_err_t lang_handler(httpd_req_t *req)
 // 启动 HTTP 服务器
 void start_http_server()
 {
+	httpd_handle_t server = NULL;
 	// 创建 HTTP 服务器
 	httpd_config_t config = HTTPD_DEFAULT_CONFIG();
 	config.stack_size = 8192;
@@ -334,48 +326,45 @@ void start_http_server()
 	config.max_resp_headers = 16; // 增加最大响应头数量
 	config.max_open_sockets = 4; // 限制最大并发连接数
 	config.send_wait_timeout = 15; // 增加发送超时时间
-
-	httpd_handle_t server = NULL;
-
-	httpd_uri_t index_uri = { .uri = "/", // 根路径
-				  .method = HTTP_GET, // 处理 GET 请求
-				  .handler = index_get_handler, // 处理函数
-				  .user_ctx = NULL };
-
-	httpd_uri_t upload_uri = { .uri = "/upload",
-				   .method = HTTP_POST,
-				   .handler = upload_post_handler,
-				   .user_ctx = NULL };
-	// 注册favicon处理程序
-	httpd_uri_t favicon_uri = { .uri = "/favicon.ico",
-				    .method = HTTP_GET,
-				    .handler = favicon_get_handler,
-				    .user_ctx = NULL };
-
-	httpd_uri_t lang_zh_uri = {
-		.uri = "/lang_zh.json",
-		.method = HTTP_GET,
-		.handler = lang_handler,
-		.user_ctx = (void *)"/spiffs/lang_zh.json" // 传递文件路径
-	};
-
-	httpd_uri_t lang_en_uri = {
-		.uri = "/lang_en.json",
-		.method = HTTP_GET,
-		.handler = lang_handler,
-		.user_ctx = (void *)"/spiffs/lang_en.json" // 传递文件路径
-	};
-
-	httpd_uri_t lang_kr_uri = {
-		.uri = "/lang_kr.json",
-		.method = HTTP_GET,
-		.handler = lang_handler,
-		.user_ctx = (void *)"/spiffs/lang_kr.json" // 传递文件路径
-	};
-
 	// 启动服务器
 	if (httpd_start(&server, &config) == ESP_OK) {
 		ESP_LOGI(TAG, "httpd_start  OK");
+
+		httpd_uri_t index_uri = { .uri = "/",
+					  .method = HTTP_GET,
+					  .handler = index_get_handler,
+					  .user_ctx = NULL };
+
+		httpd_uri_t upload_uri = { .uri = "/upload",
+					   .method = HTTP_POST,
+					   .handler = upload_post_handler,
+					   .user_ctx = NULL };
+
+		httpd_uri_t favicon_uri = { .uri = "/favicon.ico",
+					    .method = HTTP_GET,
+					    .handler = favicon_get_handler,
+					    .user_ctx = NULL };
+
+		httpd_uri_t lang_zh_uri = {
+			.uri = "/lang_zh.json",
+			.method = HTTP_GET,
+			.handler = lang_handler,
+			.user_ctx = (void *)"/spiffs/lang_zh.json"
+		};
+
+		httpd_uri_t lang_en_uri = {
+			.uri = "/lang_en.json",
+			.method = HTTP_GET,
+			.handler = lang_handler,
+			.user_ctx = (void *)"/spiffs/lang_en.json"
+		};
+
+		httpd_uri_t lang_kr_uri = {
+			.uri = "/lang_kr.json",
+			.method = HTTP_GET,
+			.handler = lang_handler,
+			.user_ctx = (void *)"/spiffs/lang_kr.json"
+		};
 
 		httpd_register_uri_handler(server, &index_uri);
 		httpd_register_uri_handler(server, &upload_uri);

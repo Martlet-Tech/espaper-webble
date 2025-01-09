@@ -31,14 +31,14 @@
 static const char *TAG = "wifi_ap";
 
 // 自定义函数将 MAC 地址转换为字符串
-void mac_to_str(const uint8_t *mac, char *mac_str)
+static void mac_to_str(const uint8_t *mac, char *mac_str)
 {
 	snprintf(mac_str, 18, "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1],
 		 mac[2], mac[3], mac[4], mac[5]);
 }
 
 // 生成随机密码的函数
-void generate_random_password(char *password, size_t length)
+static void generate_random_password(char *password, size_t length)
 {
 	char charset[] =
 		"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -52,8 +52,8 @@ void generate_random_password(char *password, size_t length)
 }
 
 // Wi-Fi 事件处理回调
-void wifi_event_handler(void *arg, esp_event_base_t event_base,
-			int32_t event_id, void *event_data)
+static void wifi_event_handler(void *arg, esp_event_base_t event_base,
+			       int32_t event_id, void *event_data)
 {
 	if (event_base == WIFI_EVENT) {
 		switch (event_id) {
