@@ -1,11 +1,11 @@
 | Supported Targets | ESP32 | ESP32-C2 | ESP32-C3 | ESP32-C6 | ESP32-S3 |
 | ----------------- | ----- | -------- | -------- | -------- | -------- |
 
-# ESP-IDF Blufi Example
+# ESP-IDF wifi AP and web server for e-paper
 
-This demo shows how to use the *Blufi* to configurate the Wi-Fi connection to AP.
+esp32 work as a web file server and wifi AP
 
-The BluFi for ESP32 is a Wi-Fi network configuration function via Bluetooth channel. It provides a secure protocol to pass Wi-Fi configuration and credentials to the ESP32.
+recive image from web and display
 
 ## How to Use Example
 

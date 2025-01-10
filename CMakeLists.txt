@@ -4,6 +4,6 @@ cmake_minimum_required(VERSION 3.16)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 #set(PARTITION_TABLE_CSV "${CMAKE_SOURCE_DIR}/partitions.csv")
-project(EL133UF1)
+project(YEPD)
 
 spiffs_create_partition_image(storage ${CMAKE_SOURCE_DIR}/main/web FLASH_IN_PROJECT)

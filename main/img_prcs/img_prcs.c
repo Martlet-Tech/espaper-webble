@@ -10,9 +10,10 @@
  */
 
 #include "img_prcs.h"
-#include "system.h"
-#include "EL133UF1.h"
-#include "fs.h"
+#include "utils.h"
+#include "YMS16001200-1330AAX-E6.h"
+#include "bsp.h"
+#include <string.h>
 
 #include "esp_vfs_fat.h"
 #include "esp_log.h"
@@ -20,6 +21,9 @@
 #include "qr_encode.h"
 #include "esp_jpeg_dec.h"
 #include "esp_task_wdt.h"
+#include <esp_netif.h>
+#include <esp_netif_types.h>
+#include "esp_wifi.h"
 
 #define PALETTE_SIZE 6
 const char *TAG = "IMG_PRCS";
@@ -34,7 +38,7 @@ void atkinsonDither(uint8_t *image, uint8_t *output_index, int image_width,
 void palette_index_to_E6_data(uint8_t *index_buffer, uint8_t *dst_m,
 			      uint8_t *dst_s);
 
-void draw_qrcode_on_ram(uint8_t *fb1);
+void draw_qrcode_on_ram(YEPD *epd, uint8_t *fb1);
 
 esp_err_t decode_jpg(uint8_t *inbuff, uint32_t insize, uint8_t *outbuff,
 		     uint32_t outsize, uint16_t *w, uint16_t *h)
@@ -90,7 +94,7 @@ esp_err_t decode_jpg(uint8_t *inbuff, uint32_t insize, uint8_t *outbuff,
 	return ESP_OK;
 }
 
-esp_err_t display_jpg_file(const char *filename)
+esp_err_t display_jpg_file(YEPD *epd, const char *filename)
 {
 	const char *TAG = "display_jpg_file";
 	esp_err_t ret = ESP_OK;
@@ -157,7 +161,7 @@ esp_err_t display_jpg_file(const char *filename)
 
 	// draw qr code
 
-	draw_qrcode_on_ram(index_buffer);
+	draw_qrcode_on_ram(epd, index_buffer);
 
 	// make epd buff
 	dst_image_buffer_m =
@@ -593,47 +597,33 @@ void draw_qr_code(uint16_t x, uint16_t y, int width_t, int side,
 	}
 }
 
-void draw_qrcode_on_ram(uint8_t *fb1)
+void draw_qrcode_on_ram(YEPD *epd, uint8_t *fb1)
 {
 	if (display_debug == 0) {
 		return;
 	}
 
-	const size_t str_len = 128;
 	UG_GUI ug;
 	int qr_side = 0;
 
 	uint8_t *qrbits_buf =
 		heap_caps_malloc(QR_MAX_BITDATA, MALLOC_CAP_SPIRAM);
-	char *str_wifi = heap_caps_malloc(str_len, MALLOC_CAP_SPIRAM);
-	char *str_web = heap_caps_malloc(str_len, MALLOC_CAP_SPIRAM);
+	char str_wifi[128] = { 0 };
+	char str_web[128] = { 0 };
 
 	show_ram_space("draw_qrcode_on_ram after malloc 3 ram");
-	//memset(str_wifi, 0, str_len);
-	//memset(str_web, 0, str_len);
 
 	ESP_LOGI(TAG, "draw_qrcode_on_ram start");
 
 	UG_Init(&ug, draw_px_ug_port, EPD_WIDTH, EPD_HEIGHT, fb1);
-	UG_FillFrame(0, 1490, 1200 - 1, 1600 - 1, WHITE);
+	UG_FillFrame(0, epd->height - 110, epd->width - 1, epd->height - 1,
+		     WHITE);
 	UG_SetBackcolor(WHITE);
 	UG_SetForecolor(BLACK);
 	UG_FontSelect(&FONT_12X20);
 
 	// draw wifi qr
-	wifi_config_t wifi_config;
-	esp_err_t ret = esp_wifi_get_config(WIFI_IF_AP, &wifi_config);
-	if (ret == ESP_OK) {
-		ESP_LOGI(TAG, "AP SSID: %s,  Password: %s", wifi_config.ap.ssid,
-			 wifi_config.ap.password);
-	} else {
-		ESP_LOGE(TAG, "Failed to get AP config: %s\n",
-			 esp_err_to_name(ret));
-	}
-
-	sprintf(str_wifi, "WIFI:T:WPA;S:%s;P:%s;;", wifi_config.ap.ssid,
-		wifi_config.ap.password);
-
+	bsp_create_wifi_qr_str(str_wifi);
 	ESP_LOGI(TAG, "wifi string(%d): %s", strlen(str_wifi), str_wifi);
 
 	qr_side = qr_encode(QR_LEVEL_M, 0, str_wifi, strlen(str_wifi),
@@ -643,17 +633,7 @@ void draw_qrcode_on_ram(uint8_t *fb1)
 	draw_qr_code(20, 1500, 100, qr_side, qrbits_buf, fb1, draw_px_ug_port);
 
 	// draw webside qr
-	esp_netif_ip_info_t ip_info;
-	esp_netif_t *netif =
-		esp_netif_get_handle_from_ifkey("WIFI_AP_DEF"); // Station模式下
-
-	if (esp_netif_get_ip_info(netif, &ip_info) == ESP_OK) {
-		ESP_LOGI(TAG, "IP Address: " IPSTR "\n", IP2STR(&ip_info.ip));
-	} else {
-		ESP_LOGE(TAG, "Failed to get IP address\n");
-	}
-	sprintf(str_web, "http://" IPSTR "/?width=1200&height=1600",
-		IP2STR(&ip_info.ip));
+	bsp_create_web_qr_str(str_web);
 	ESP_LOGI(TAG, "web string(%d): %s", strlen(str_web), str_web);
 
 	qr_side =
@@ -665,8 +645,7 @@ void draw_qrcode_on_ram(uint8_t *fb1)
 
 	// put text
 	char text_wifi[256];
-	sprintf(text_wifi, "#1: Scan left to connect Wi-Fi <S:%s P:%s>",
-		wifi_config.ap.ssid, wifi_config.ap.password);
+	sprintf(text_wifi, "#1: Scan left to connect Wi-Fi: %s", str_wifi);
 	UG_PutString(120, 1500, text_wifi);
 
 	UG_PutString(120, 1525, "#2: Scan Right to connect to Website");
@@ -677,12 +656,10 @@ void draw_qrcode_on_ram(uint8_t *fb1)
 
 	UG_PutString(120, 1575, "#3: Select an image to upload to EPD");
 
-	free(str_wifi);
-	free(str_web);
 	free(qrbits_buf);
 }
 
-void draw_note(uint8_t *fb1)
+void draw_note(YEPD *epd, uint8_t *fb1)
 {
 	char note1[] =
 		"Use the phone's built-in camera to scan the QR code because most current mobile operating systems restrict third-party applications from controlling Wi-Fi settings directly.";
@@ -691,7 +668,8 @@ void draw_note(uint8_t *fb1)
 
 	UG_GUI ug;
 	UG_Init(&ug, draw_px_ug_port, EPD_WIDTH, EPD_HEIGHT, fb1);
-	UG_FillFrame(0, 1490, 1200 - 1, 1600 - 1, WHITE);
+	UG_FillFrame(0, epd->height - 110, epd->width - 1, epd->height - 1,
+		     WHITE);
 	UG_SetBackcolor(WHITE);
 	UG_SetForecolor(RED);
 	UG_FontSelect(&FONT_24X40);
@@ -700,7 +678,7 @@ void draw_note(uint8_t *fb1)
 	UG_PutString(50, 500, note2);
 }
 
-void show_start_screen(void)
+void show_start_screen(YEPD *epd)
 {
 	show_ram_space("show_start_screen begin");
 
@@ -713,6 +691,7 @@ void show_start_screen(void)
 
 	show_ram_space("show_start_screen after alloc");
 
+	// compatiable with color pallet
 	for (int y = 0; y < EPD_HEIGHT; y++) {
 		for (int x = 0; x < EPD_WIDTH; x++) {
 			// white
@@ -743,7 +722,7 @@ void show_start_screen(void)
 	}
 
 	//draw_note(fb1);
-	draw_qrcode_on_ram(fb1);
+	draw_qrcode_on_ram(epd, fb1);
 
 	// fb1 -> fb2
 	palette_index_to_E6_data(fb1, fbm, fbs);
@@ -759,4 +738,65 @@ void show_start_screen(void)
 	free(fb1);
 
 	show_ram_space("show_start_screen before exit");
+}
+
+jpeg_error_t esp_jpeg_encode_one_picture(uint32_t w, uint32_t h, uint8_t *inbuf,
+					 uint8_t *outbuf)
+{
+	// configure encoder
+	jpeg_enc_config_t jpeg_enc_cfg = DEFAULT_JPEG_ENC_CONFIG();
+	jpeg_enc_cfg.width = w;
+	jpeg_enc_cfg.height = h;
+	jpeg_enc_cfg.src_type = JPEG_PIXEL_FORMAT_RGB888;
+	jpeg_enc_cfg.subsampling = JPEG_SUBSAMPLE_420;
+	jpeg_enc_cfg.quality = 60;
+	jpeg_enc_cfg.rotate = JPEG_ROTATE_0D;
+	jpeg_enc_cfg.task_enable = false;
+	jpeg_enc_cfg.hfm_task_priority = 13;
+	jpeg_enc_cfg.hfm_task_core = 1;
+
+	jpeg_error_t ret = JPEG_ERR_OK;
+	//uint8_t *inbuf = test_rgb888_data;
+	int image_size = jpeg_enc_cfg.width * jpeg_enc_cfg.height * 3;
+	//uint8_t *outbuf = NULL;
+	//int outbuf_size = 1024;
+	int out_len = 0;
+	jpeg_enc_handle_t jpeg_enc = NULL;
+	FILE *out = NULL;
+
+	// open
+	ret = jpeg_enc_open(&jpeg_enc_cfg, &jpeg_enc);
+	if (ret != JPEG_ERR_OK) {
+		return ret;
+	}
+
+	// allocate output buffer to fill encoded image stream
+	// outbuf = (uint8_t *)calloc(1, outbuf_size);
+	//outbuf = heap_caps_malloc(100 * 1024, MALLOC_CAP_SPIRAM);
+	//if (outbuf == NULL) {
+	//	ret = JPEG_ERR_NO_MEM;
+	//	goto jpeg_example_exit;
+	//}
+
+	// process
+	ret = jpeg_enc_process(jpeg_enc, inbuf, image_size, outbuf, 100 * 1024,
+			       &out_len);
+	if (ret != JPEG_ERR_OK) {
+		goto jpeg_example_exit;
+	}
+
+	out = fopen("/sdcard/qr_wifi.jpg", "wb+");
+	if (out == NULL) {
+		goto jpeg_example_exit;
+	}
+	fwrite(outbuf, 1, out_len, out);
+	fclose(out);
+
+jpeg_example_exit:
+	// close
+	jpeg_enc_close(jpeg_enc);
+	//if (outbuf) {
+	//	free(outbuf);
+	//}
+	return ret;
 }

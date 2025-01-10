@@ -18,14 +18,17 @@
 #include "esp_http_server.h"
 #include "esp_vfs_fat.h"
 #include "sdmmc_cmd.h"
-#include "fs.h"
-#include "system.h"
+#include "bsp.h"
+#include "utils.h"
 #include "img_prcs.h"
 #include "esp_timer.h"
 #include "esp_event.h"
+#include "epd.h"
 
 #define BUFFER_SIZE 1024
 #define MAX_FILE_SIZE (4 * 1024 * 1024) // 假设文件大小最大为 2MB
+
+extern YEPD *epd;
 
 typedef struct {
 	char *data; // 用于存储文件数据的 PSRAM 缓存
@@ -266,7 +269,7 @@ static esp_err_t upload_post_handler(httpd_req_t *req)
 	strcpy(processing_stage, "decoding");
 
 	int64_t start_time = esp_timer_get_time();
-	display_jpg_file(SDCARD_MOUNT_POINT "/upload.jpg");
+	display_jpg_file(epd, SDCARD_MOUNT_POINT "/upload.jpg");
 	int64_t end_time = esp_timer_get_time();
 	int64_t time_elapsed = end_time - start_time;
 	ESP_LOGI(TAG, "display_jpg_file execution time: %lld us\n",

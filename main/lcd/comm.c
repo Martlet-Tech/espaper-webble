@@ -26,16 +26,11 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "freertos/task.h"
-#include "pindefine.h"
+#include "bsp.h"
 
 #define TAG "EPD-COMM"
 
 extern spi_device_handle_t spi;
-
-void delayms(unsigned int delayTime)
-{
-	vTaskDelay(delayTime / portTICK_PERIOD_MS);
-}
 
 void setGpioLevel(unsigned char pinNumber, unsigned char voltageLevel)
 {
@@ -89,28 +84,4 @@ void EPD_IO_WriteDataBytes(const unsigned char *bytes, unsigned int length)
 void EPD_IO_Write_byte(const unsigned char data)
 {
 	EPD_IO_WriteDataBytes(&data, 1);
-}
-
-void EPD_IO_WriteCommandData_2CH(const unsigned char cmd,
-				 const unsigned char *data,
-				 unsigned int data_length, unsigned int cs_mask)
-{
-	if (cs_mask == CS_MASK_MASTER_SLAVE) {
-		setGpioLevel(PIN_CS_M, 0);
-		setGpioLevel(PIN_CS_S, 0);
-	} else if (cs_mask == CS_MASK_MASTER)
-		setGpioLevel(PIN_CS_M, 0);
-	else if (cs_mask == CS_MASK_SLAVE)
-		setGpioLevel(PIN_CS_S, 0);
-
-	EPD_IO_Write_byte(cmd);
-	EPD_IO_WriteDataBytes(data, data_length);
-
-	if (cs_mask == CS_MASK_MASTER_SLAVE) {
-		setGpioLevel(PIN_CS_M, 1);
-		setGpioLevel(PIN_CS_S, 1);
-	} else if (cs_mask == CS_MASK_MASTER)
-		setGpioLevel(PIN_CS_M, 1);
-	else if (cs_mask == CS_MASK_SLAVE)
-		setGpioLevel(PIN_CS_S, 1);
 }

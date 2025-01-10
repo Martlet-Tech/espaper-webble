@@ -10,15 +10,37 @@
 
 #define __EL133UF1_C__
 
-#include "EL133UF1.h"
-#include "comm.h"
-#include "esp_log.h"
-#include "pindefine.h"
 #include <stdio.h>
 #include <string.h>
 
 #include "esp_log.h"
 #include <esp_task_wdt.h>
+#include <driver/spi_common.h>
+#include <driver/spi_master.h>
+#include <driver/gpio.h>
+
+#include "YMS16001200-1330AAX-E6.h"
+#include "bsp.h"
+#include "comm.h"
+#include "utils.h"
+
+#define PIN_CS_M 13
+#define PIN_CS_S 9
+#define SPI_CLK 12
+#define SPI_Data0_MOSI 11
+#define SPI_Data1_MISO 10
+#define SPI_Data2 0
+#define SPI_Data3 0
+
+//==============   GPIO Setting   ==============//
+// Please modify the pin number
+#define EPD_BUSY 14
+#define EPD_RST 21
+
+//===============================================
+
+#define GPIO_LOW 0
+#define GPIO_HIGH 1
 
 #define TAG "EL122UF1.c"
 
@@ -48,6 +70,8 @@ const unsigned char SPIM_V[1] = {
 	0x10
 }; // 0 - Single SPI (Default) 1 - Quad SPI
 
+spi_device_handle_t spi;
+
 //================== GPIO Setting ====================================
 void resetPin(unsigned int pinStatus)
 {
@@ -57,7 +81,6 @@ void resetPin(unsigned int pinStatus)
 void setPinCsAll(unsigned int setLevel)
 {
 	unsigned char i;
-	// TODO
 	for (i = 0; i < sizeof(spiCsPin); i++) {
 		setGpioLevel(spiCsPin[i], setLevel);
 	}
@@ -97,6 +120,91 @@ void checkBusyLow(void) // If BUSYN=1 then waiting
 	};
 }
 //====================================================================
+void EPD_IO_WriteCommandData_2CH(const unsigned char cmd,
+				 const unsigned char *data,
+				 unsigned int data_length, unsigned int cs_mask)
+{
+	if (cs_mask == CS_MASK_MASTER_SLAVE) {
+		setGpioLevel(PIN_CS_M, 0);
+		setGpioLevel(PIN_CS_S, 0);
+	} else if (cs_mask == CS_MASK_MASTER)
+		setGpioLevel(PIN_CS_M, 0);
+	else if (cs_mask == CS_MASK_SLAVE)
+		setGpioLevel(PIN_CS_S, 0);
+
+	EPD_IO_Write_byte(cmd);
+	EPD_IO_WriteDataBytes(data, data_length);
+
+	if (cs_mask == CS_MASK_MASTER_SLAVE) {
+		setGpioLevel(PIN_CS_M, 1);
+		setGpioLevel(PIN_CS_S, 1);
+	} else if (cs_mask == CS_MASK_MASTER)
+		setGpioLevel(PIN_CS_M, 1);
+	else if (cs_mask == CS_MASK_SLAVE)
+		setGpioLevel(PIN_CS_S, 1);
+}
+//====================================================================
+static void io_initial(void)
+{
+	esp_err_t ret;
+
+	spi_bus_config_t bus_config = {
+		.mosi_io_num = SPI_Data0_MOSI,
+		.miso_io_num = SPI_Data1_MISO,
+		.sclk_io_num = SPI_CLK,
+		.quadwp_io_num = -1,
+		.quadhd_io_num = -1,
+		.max_transfer_sz = CHUNK_SIZE,
+	};
+	ret = spi_bus_initialize(SPI2_HOST, &bus_config, SPI_DMA_CH_AUTO);
+	if (ret != ESP_OK) {
+		printf("spi bus initial failed\r\n");
+		while (1) {
+			vTaskDelay(1000);
+		}
+	}
+
+	spi_device_interface_config_t dev_config_0 = {
+		.clock_speed_hz = 16000000,
+		.mode = 0,
+		.spics_io_num = -1,
+		.queue_size = 7,
+		.command_bits = 0,
+		.address_bits = 0,
+		.dummy_bits = 0,
+		//.duty_cycle_pos = 128,
+		//.flags = SPI_DEVICE_HALFDUPLEX, // 使用半双工模式
+	};
+
+	// TEST_ESP_OK(spi_bus_initialize(TEST_SPI_HOST, &buscfg, dma ? SPI_DMA_CH_AUTO : 0));
+	ret = spi_bus_add_device(SPI2_HOST, &dev_config_0, &spi);
+	if (ret != ESP_OK) {
+		printf("spi bus initial failed\r\n");
+		while (1) {
+			vTaskDelay(1000);
+		}
+	}
+
+	gpio_config_t gpiocfg_out_lcd = {};
+	gpiocfg_out_lcd.intr_type = GPIO_INTR_DISABLE;
+	gpiocfg_out_lcd.mode = GPIO_MODE_OUTPUT;
+	gpiocfg_out_lcd.pin_bit_mask = (1ULL << EPD_RST) | (1ULL << PIN_CS_M) |
+				       (1ULL << PIN_CS_S);
+	gpiocfg_out_lcd.pull_down_en = GPIO_PULLDOWN_DISABLE;
+	gpiocfg_out_lcd.pull_up_en = GPIO_PULLUP_DISABLE;
+	gpio_config(&gpiocfg_out_lcd);
+
+	gpio_config_t gpiocfg_in_lcd = {};
+	gpiocfg_in_lcd.intr_type = GPIO_INTR_DISABLE;
+	gpiocfg_in_lcd.mode = GPIO_MODE_INPUT;
+	gpiocfg_in_lcd.pin_bit_mask = (1ULL << EPD_BUSY);
+	gpiocfg_in_lcd.pull_down_en = GPIO_PULLDOWN_DISABLE;
+	gpiocfg_in_lcd.pull_up_en = GPIO_PULLUP_ENABLE;
+	gpio_config(&gpiocfg_in_lcd);
+
+	setPinCsAll(GPIO_HIGH);
+	delayms(20);
+}
 
 void epdHardwareReset(void)
 {
@@ -114,8 +222,7 @@ void epdHardwareReset(void)
 
 void EL133UF1_Init(void)
 {
-	setPinCsAll(GPIO_HIGH);
-	delayms(20);
+	io_initial();
 
 	epdHardwareReset();
 
@@ -225,9 +332,38 @@ void EL133UF1_Sleep(void)
 
 int EL133UF1_Deinit(void)
 {
-	//epd_io.EPD_IO_Power_Off();
-	// Serial.println("EL133UF1 Power Off.");
-	//epd_io.EPD_IO_Deinitialize();
-	// Serial.println("EL133UF1 Deinitialize.");
+	// 移除SPI设备
+	if (spi != NULL) {
+		esp_err_t ret = spi_bus_remove_device(spi);
+		if (ret != ESP_OK) {
+			printf("Failed to remove SPI device\r\n");
+		}
+		spi = NULL;
+	}
+
+	// 反初始化SPI总线
+	esp_err_t ret = spi_bus_free(SPI2_HOST);
+	if (ret != ESP_OK) {
+		printf("Failed to free SPI bus\r\n");
+	}
+
+	// 重置GPIO配置到默认状态，这里简单地设置为输入模式并禁用中断
+	gpio_config_t gpiocfg_reset = {};
+	gpiocfg_reset.intr_type = GPIO_INTR_DISABLE;
+	gpiocfg_reset.mode = GPIO_MODE_INPUT;
+	gpiocfg_reset.pin_bit_mask = (1ULL << EPD_RST) | (1ULL << PIN_CS_M) |
+				     (1ULL << PIN_CS_S) | (1ULL << EPD_BUSY);
+	gpiocfg_reset.pull_down_en = GPIO_PULLDOWN_DISABLE;
+	gpiocfg_reset.pull_up_en = GPIO_PULLUP_DISABLE;
+	gpio_config(&gpiocfg_reset);
+
+	// 如果有其他特定的GPIO清理操作，可以在下面添加
+
+	return 0;
+}
+
+int EL133UF1_display_jpg(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
+			 uint8_t *rgb_buff)
+{
 	return 0;
 }

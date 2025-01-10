@@ -34,6 +34,8 @@
 /* Specify platform-dependent integer types here */
 
 #define __UG_FONT_DATA const
+
+#include <stdint.h>
 typedef uint8_t      UG_U8;
 typedef int8_t       UG_S8;
 typedef uint16_t     UG_U16;

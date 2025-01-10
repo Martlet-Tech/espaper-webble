@@ -287,6 +287,21 @@
     #languageSwitcher:focus {
       border-color: #007bff;
     }
+
+    #device_selector {
+      padding: 8px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      background-color: #f9f9f9;
+      font-size: 16px;
+      cursor: pointer;
+      outline: none;
+      transition: border-color 0.3s ease;
+    }
+
+    #device_selector:focus {
+      border-color: #007bff;
+    }
   </style>
 </head>
 
@@ -296,6 +311,10 @@
       <option value="en">English</option>
       <option value="zh">中文</option>
       <option value="kr">한국어</option>
+    </select>
+
+    <select id="device_selector">
+      <option value="-1">请选择</option>
     </select>
 
     <!-- <h1 id="title"></h1>

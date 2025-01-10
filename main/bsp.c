@@ -1,16 +1,15 @@
 /**
- * @file fs.c
+ * @file bsp.c
  * @author zhaitao (zhaitao.as@outlook.com)
  * @brief 
  * @version 0.1
- * @date 2024-11-01
+ * @date 2025-01-10
  * 
- * @copyright zhaitao.as@outlook.com (c) 2024
+ * @copyright zhaitao.as@outlook.com (c) 2025
  * 
  */
 
-#include "fs.h"
-
+#include "bsp.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -34,6 +33,8 @@
 static const char *TAG = "file";
 
 sdmmc_card_t *card;
+
+YEPD *epd;
 
 /* 打印文件列表 */
 void list_files(const char *base_path)
@@ -245,5 +246,40 @@ esp_err_t write_to_sdcard(const char *filepath, const char *content)
 	}
 
 	fclose(f);
+	return ESP_OK;
+}
+
+esp_err_t bsp_create_wifi_qr_str(char *str_buf)
+{
+	wifi_config_t wifi_config;
+	esp_err_t ret = esp_wifi_get_config(WIFI_IF_AP, &wifi_config);
+	if (ret == ESP_OK) {
+		ESP_LOGI(TAG, "AP SSID: %s,  Password: %s", wifi_config.ap.ssid,
+			 wifi_config.ap.password);
+	} else {
+		ESP_LOGE(TAG, "Failed to get AP config: %s\n",
+			 esp_err_to_name(ret));
+		return ESP_FAIL;
+	}
+
+	sprintf(str_buf, "WIFI:T:WPA;S:%s;P:%s;;", wifi_config.ap.ssid,
+		wifi_config.ap.password);
+
+	return ESP_OK;
+}
+
+esp_err_t bsp_create_web_qr_str(char *str_buf)
+{
+	esp_netif_ip_info_t ip_info;
+	esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
+
+	if (esp_netif_get_ip_info(netif, &ip_info) == ESP_OK) {
+		ESP_LOGI(TAG, "IP Address: " IPSTR "\n", IP2STR(&ip_info.ip));
+	} else {
+		ESP_LOGE(TAG, "Failed to get IP address\n");
+	}
+	sprintf(str_buf, "http://" IPSTR "/?width=%d&height=%d",
+		IP2STR(&ip_info.ip), epd->width, epd->height);
+
 	return ESP_OK;
 }
