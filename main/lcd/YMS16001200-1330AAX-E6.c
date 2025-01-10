@@ -206,7 +206,7 @@ static void io_initial(void)
 	delayms(20);
 }
 
-void epdHardwareReset(void)
+static void epdHardwareReset(void)
 {
 	resetPin(GPIO_HIGH);
 	delayms(30);
@@ -220,7 +220,7 @@ void epdHardwareReset(void)
 	delayms(30);
 }
 
-void EL133UF1_Init(void)
+int EL133UF1_Init(void)
 {
 	io_initial();
 
@@ -262,32 +262,7 @@ void EL133UF1_Init(void)
 				    sizeof(TFT_VCOM_POWER_V), CS_MASK_MASTER);
 
 	ESP_LOGI(TAG, "EPD initial command send done\r\n");
-}
-
-void EL133UF1_Update(void)
-{
-	ESP_LOGI(TAG, "Updating");
-
-	setGpioLevel(PIN_CS_M, 0);
-	setGpioLevel(PIN_CS_S, 0);
-
-	EPD_IO_Write_byte(PON);
-
-	setGpioLevel(PIN_CS_M, 1);
-	setGpioLevel(PIN_CS_S, 1);
-	checkBusyHigh();
-	// ATTENTION: check busy 原本放在CS拉高之前。此为同一般SPI接口屏幕的区别，需要测试是否兼容。
-
-	delayms(30);
-	EPD_IO_WriteCommandData_2CH(DRF, DRF_V, sizeof(DRF_V),
-				    CS_MASK_MASTER_SLAVE);
-
-	checkBusyHigh();
-	// ATTENTION: check busy 原本放在CS拉高之前。此为同一般SPI接口屏幕的区别，需要测试是否兼容。
-	EPD_IO_WriteCommandData_2CH(POF, POF_V, sizeof(POF_V),
-				    CS_MASK_MASTER_SLAVE);
-
-	ESP_LOGI(TAG, "Update Finish");
+	return 0;
 }
 
 void EL133UF1_DisplayFrame(const unsigned char *frame_buffer_m,
@@ -312,22 +287,10 @@ void EL133UF1_DisplayFrame(const unsigned char *frame_buffer_m,
 	EL133UF1_Update();
 }
 
-void EL133UF1_DisplayColor(unsigned char color, unsigned char *frame_buffer_m,
-			   unsigned char *frame_buffer_s)
+int EL133UF1_fill_bitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
+			 uint8_t *rgb_buff)
 {
-	color = color + (color << 4);
-	ESP_LOGI(TAG, "EL133UF1_DisplayColor Prepare.");
-	for (unsigned int i = 0; i < EPD_FRAME_SIZE; i++) {
-		frame_buffer_m[i] = color;
-		frame_buffer_s[i] = color;
-	}
-	ESP_LOGI(TAG, "EL133UF1_DisplayColor Ready.");
-	EL133UF1_DisplayFrame(frame_buffer_m, frame_buffer_s);
-}
-
-void EL133UF1_Sleep(void)
-{
-	// Serial.println("EL133UF1_Sleep.");
+	return 0;
 }
 
 int EL133UF1_Deinit(void)
@@ -362,8 +325,43 @@ int EL133UF1_Deinit(void)
 	return 0;
 }
 
-int EL133UF1_display_jpg(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
-			 uint8_t *rgb_buff)
+int EL133UF1_Update(void)
 {
+	ESP_LOGI(TAG, "Updating");
+
+	setGpioLevel(PIN_CS_M, 0);
+	setGpioLevel(PIN_CS_S, 0);
+
+	EPD_IO_Write_byte(PON);
+
+	setGpioLevel(PIN_CS_M, 1);
+	setGpioLevel(PIN_CS_S, 1);
+	checkBusyHigh();
+	// ATTENTION: check busy 原本放在CS拉高之前。此为同一般SPI接口屏幕的区别，需要测试是否兼容。
+
+	delayms(30);
+	EPD_IO_WriteCommandData_2CH(DRF, DRF_V, sizeof(DRF_V),
+				    CS_MASK_MASTER_SLAVE);
+
+	checkBusyHigh();
+	// ATTENTION: check busy 原本放在CS拉高之前。此为同一般SPI接口屏幕的区别，需要测试是否兼容。
+	EPD_IO_WriteCommandData_2CH(POF, POF_V, sizeof(POF_V),
+				    CS_MASK_MASTER_SLAVE);
+
+	ESP_LOGI(TAG, "Update Finish");
+
 	return 0;
+}
+
+void EL133UF1_DisplayColor(unsigned char color, unsigned char *frame_buffer_m,
+			   unsigned char *frame_buffer_s)
+{
+	color = color + (color << 4);
+	ESP_LOGI(TAG, "EL133UF1_DisplayColor Prepare.");
+	for (unsigned int i = 0; i < EPD_FRAME_SIZE; i++) {
+		frame_buffer_m[i] = color;
+		frame_buffer_s[i] = color;
+	}
+	ESP_LOGI(TAG, "EL133UF1_DisplayColor Ready.");
+	EL133UF1_DisplayFrame(frame_buffer_m, frame_buffer_s);
 }

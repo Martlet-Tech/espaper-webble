@@ -18,24 +18,30 @@ YEPD epd_list[] = {
 		"YMS400600-040AAX-E6",
 		400,
 		600,
-		EL133UF1_display_jpg,
+		EL133UF1_Init,
+		EL133UF1_fill_bitmap,
+		EL133UF1_Update,
 	},
 	{
 		"YMS800480-073AAX-E6",
 		800,
 		480,
-		EL133UF1_display_jpg,
+		EL133UF1_Init,
+		EL133UF1_fill_bitmap,
+		EL133UF1_Update,
 	},
 	{
 		"YMS16001200-1330AAX-E6",
 		1200,
 		1600,
-		EL133UF1_display_jpg,
+		EL133UF1_Init,
+		EL133UF1_fill_bitmap,
+		EL133UF1_Update,
 	},
-	{ NULL, 0, 0, NULL },
+	{ NULL, 0, 0, NULL, NULL, NULL },
 };
 
-int yepd_get_index_by_name(const char *module_name)
+static int yepd_get_index_by_name(const char *module_name)
 {
 	int index = 0;
 
@@ -50,13 +56,15 @@ int yepd_get_index_by_name(const char *module_name)
 	return -1; // 未找到，返回 -1
 }
 
-YEPD *yepd_get_by_index(int index)
+#if 0
+static YEPD *yepd_get_by_index(int index)
 {
 	if (index >= 0 && epd_list[index].name != NULL) {
 		return &epd_list[index]; // 返回指向该对象的指针
 	}
 	return NULL; // 如果索引无效，返回 NULL
 }
+#endif
 
 YEPD *yepd_init_by_name(const char *module_name)
 {

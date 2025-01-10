@@ -59,12 +59,11 @@
 
 extern unsigned char epdImageDataBuffer[EPD_IMAGE_DATA_BUFFER];
 
-void epdHardwareReset(void);
 void setPinCsAll(unsigned int setLevel);
 void setPinCs(unsigned char csNumber, unsigned int setLevel);
 void checkBusyHigh(void);
 void checkBusyLow(void);
-void EL133UF1_Init(void);
+
 void EL133UF1_DisplayFrame(const unsigned char *frame_buffer_m,
 			   const unsigned char *frame_buffer_s);
 void EL133UF1_DisplayColor(unsigned char color, unsigned char *frame_buffer_m,
@@ -72,7 +71,8 @@ void EL133UF1_DisplayColor(unsigned char color, unsigned char *frame_buffer_m,
 void EL133UF1_Sleep(void);
 int EL133UF1_Deinit(void);
 
-int EL133UF1_display_jpg(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
+int EL133UF1_Init(void);
+int EL133UF1_fill_bitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
 			 uint8_t *rgb_buff);
-
+int EL133UF1_Update(void);
 #endif // #ifndef __EL133UF1_H__

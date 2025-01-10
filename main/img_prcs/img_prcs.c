@@ -106,43 +106,38 @@ esp_err_t display_jpg_file(YEPD *epd, const char *filename)
 	uint8_t *dst_image_buffer_m = NULL;
 	uint8_t *dst_image_buffer_s = NULL;
 
-	uint16_t w = EPD_WIDTH;
-	uint16_t h = EPD_HEIGHT;
+	//uint16_t w = EPD_WIDTH;
+	//uint16_t h = EPD_HEIGHT;
 	uint16_t w_img = 0;
 	uint16_t h_img = 0;
-	uint32_t file_size;
-	uint32_t rgb_buff_size;
-
-	//ESP_LOGI(TAG, "start, file: %s", filename);
-	//show_ram_space("start of display_jpg_file");
+	uint32_t file_size = 0;
+	uint32_t rgb_buff_size = epd->width * epd->height * 3;
 
 	// read jpg file to psram
-
 	jpg_file_buff = SD_MMC_ReadFileToPsram(filename, &file_size);
-	if (jpg_file_buff == NULL) {
+	if ((jpg_file_buff == NULL) || (file_size == 0)) {
+		ESP_LOGE(TAG, "read jpg file fail");
 		return ESP_FAIL;
 	}
-	//show_ram_space("after malloc jpg_file_buff");
 
-	rgb_buff_size = EPD_WIDTH * EPD_HEIGHT * 3;
+	// alloc rgb_buff
 	rgb_buff =
 		(uint8_t *)heap_caps_malloc(rgb_buff_size, MALLOC_CAP_SPIRAM);
 	if (rgb_buff == NULL) {
 		ESP_LOGE(TAG, "rgb_buff malloc fail");
 		return ESP_FAIL;
 	}
-	//show_ram_space("after malloc rgb_buff");
+	show_ram_space("after malloc rgb_buff");
 
 	// decode jpg file to rgb ram
-
 	ESP_ERROR_CHECK(decode_jpg(jpg_file_buff, file_size, rgb_buff,
 				   rgb_buff_size, &w_img, &h_img));
 
 	free(jpg_file_buff);
 	show_ram_space("after free jpg_file_buff");
 
-	index_buffer = (uint8_t *)heap_caps_malloc(EPD_WIDTH * EPD_HEIGHT,
-						   MALLOC_CAP_SPIRAM);
+	index_buffer =
+		heap_caps_malloc(epd->width * epd->height, MALLOC_CAP_SPIRAM);
 	if (index_buffer == NULL) {
 		ESP_LOGE(TAG, "index_buffer malloc fail");
 		return ESP_FAIL;
@@ -150,9 +145,8 @@ esp_err_t display_jpg_file(YEPD *epd, const char *filename)
 	//show_ram_space("after malloc index_buffer");
 
 	// process dither
-
-	//stuckiDither((uint8_t *)org_image_buffer, (uint8_t *)index_buffer, w, h);
-	atkinsonDither((uint8_t *)rgb_buff, (uint8_t *)index_buffer, w, h);
+	//stuckiDither((uint8_t *)org_image_buffer, (uint8_t *)index_buffer, w, h);]
+	atkinsonDither(rgb_buff, index_buffer, epd->width, epd->height);
 
 	free(rgb_buff);
 	show_ram_space("after free rgb_buff");
@@ -160,7 +154,6 @@ esp_err_t display_jpg_file(YEPD *epd, const char *filename)
 	vTaskDelay(20 / portTICK_PERIOD_MS);
 
 	// draw qr code
-
 	draw_qrcode_on_ram(epd, index_buffer);
 
 	// make epd buff
@@ -176,11 +169,13 @@ esp_err_t display_jpg_file(YEPD *epd, const char *filename)
 	ESP_LOGI(TAG, "取模完成");
 
 	// update epd
-
 	EL133UF1_Init();
 	EL133UF1_DisplayFrame(dst_image_buffer_m, dst_image_buffer_s);
-	EL133UF1_Sleep();
 	EL133UF1_Deinit();
+
+	//epd->init();
+	//epd->fill(0, 0, epd->width, epd->height, rgb_buff);
+	//epd->update();
 
 	free(dst_image_buffer_m);
 	free(dst_image_buffer_s);
@@ -730,7 +725,6 @@ void show_start_screen(YEPD *epd)
 	// ppd send data, update
 	EL133UF1_Init();
 	EL133UF1_DisplayFrame(fbm, fbs);
-	EL133UF1_Sleep();
 	EL133UF1_Deinit();
 
 	free(fbs);
