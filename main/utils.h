@@ -20,4 +20,6 @@ void delayms(unsigned int delayTime);
 void delay_ms(unsigned int delayTime);
 void delayus(unsigned int delayTime);
 void delay_us(unsigned int delayTime);
+void safe_free(int **ptr);
+void swap_pixels(unsigned char *a, unsigned char *b);
 #endif

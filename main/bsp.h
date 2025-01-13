@@ -31,6 +31,7 @@ esp_err_t sdcard_unmount(void);
 esp_err_t sdcard_test();
 uint8_t *SD_MMC_ReadFileToPsram(const char *path, uint32_t *file_size);
 esp_err_t write_to_sdcard(const char *filepath, const char *content);
+void sdcard_save_buff(uint8_t *buff, int size, const char *file);
 
 esp_err_t bsp_create_wifi_qr_str(char *str_buf);
 esp_err_t bsp_create_web_qr_str(char *str_buf);

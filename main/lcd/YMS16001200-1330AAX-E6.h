@@ -71,8 +71,9 @@ void EL133UF1_DisplayColor(unsigned char color, unsigned char *frame_buffer_m,
 void EL133UF1_Sleep(void);
 int EL133UF1_Deinit(void);
 
-int EL133UF1_Init(void);
-int EL133UF1_fill_bitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
-			 uint8_t *rgb_buff);
-int EL133UF1_Update(void);
+int EL133UF1_new_init(void);
+int EL133UF1_new_fill_fb(uint8_t *rgb_buff);
+int EL133UF1_new_update(void);
+int EL133UF1_new_fill_index(uint8_t *index_buff);
+
 #endif // #ifndef __EL133UF1_H__

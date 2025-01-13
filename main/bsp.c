@@ -249,6 +249,36 @@ esp_err_t write_to_sdcard(const char *filepath, const char *content)
 	return ESP_OK;
 }
 
+void sdcard_save_buff(uint8_t *buff, int size, const char *file)
+{
+	// 检查输入参数
+	if (buff == NULL || file == NULL || size <= 0) {
+		ESP_LOGE(TAG, "Invalid arguments: buff=%p, size=%d, file=%s",
+			 buff, size, file);
+		return;
+	}
+
+	// 打开文件
+	FILE *f = fopen(file, "wb");
+	if (f == NULL) {
+		ESP_LOGE(TAG, "Failed to open file: %s", file);
+		return;
+	}
+
+	// 写入数据
+	size_t written = fwrite(buff, 1, size, f);
+	if (written != size) {
+		ESP_LOGE(TAG,
+			 "Failed to write all data to file: %s. Written: %d/%d",
+			 file, (int)written, size);
+	} else {
+		ESP_LOGI(TAG, "Successfully saved %d bytes to %s", size, file);
+	}
+
+	// 关闭文件
+	fclose(f);
+}
+
 esp_err_t bsp_create_wifi_qr_str(char *str_buf)
 {
 	wifi_config_t wifi_config;

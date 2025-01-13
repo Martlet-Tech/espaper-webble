@@ -14,8 +14,7 @@
 #include "stdint.h"
 #include <stddef.h>
 
-typedef int (*YEPD_Fill_Bitmap)(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
-				uint8_t *rgb_buff);
+typedef int (*YEPD_Fill_FB)(uint8_t *buff);
 typedef int (*YEPD_Initial)(void);
 typedef int (*YEPD_Update)(void);
 
@@ -23,8 +22,9 @@ typedef struct {
 	char *name;
 	uint16_t width;
 	uint16_t height;
+	const char *palette;
 	YEPD_Initial init; // initail gpio, bus, and epd module
-	YEPD_Fill_Bitmap fill; // fill bitmap
+	YEPD_Fill_FB fill_index; // fill index buffer
 	YEPD_Update update; // update deinitial and sleep
 } YEPD;
 

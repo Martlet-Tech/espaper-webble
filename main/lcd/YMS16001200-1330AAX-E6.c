@@ -23,6 +23,7 @@
 #include "bsp.h"
 #include "comm.h"
 #include "utils.h"
+#include "img_prcs.h"
 
 #define PIN_CS_M 13
 #define PIN_CS_S 9
@@ -71,6 +72,13 @@ const unsigned char SPIM_V[1] = {
 }; // 0 - Single SPI (Default) 1 - Quad SPI
 
 spi_device_handle_t spi;
+
+uint8_t *index_buffer = NULL;
+uint8_t *dst_image_buffer_m = NULL;
+uint8_t *dst_image_buffer_s = NULL;
+uint32_t DST_FRAME_SIZE = EPD_FRAME_SIZE;
+
+int EL133UF1_Update(void);
 
 //================== GPIO Setting ====================================
 void resetPin(unsigned int pinStatus)
@@ -287,12 +295,6 @@ void EL133UF1_DisplayFrame(const unsigned char *frame_buffer_m,
 	EL133UF1_Update();
 }
 
-int EL133UF1_fill_bitmap(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
-			 uint8_t *rgb_buff)
-{
-	return 0;
-}
-
 int EL133UF1_Deinit(void)
 {
 	// 移除SPI设备
@@ -364,4 +366,41 @@ void EL133UF1_DisplayColor(unsigned char color, unsigned char *frame_buffer_m,
 	}
 	ESP_LOGI(TAG, "EL133UF1_DisplayColor Ready.");
 	EL133UF1_DisplayFrame(frame_buffer_m, frame_buffer_s);
+}
+
+int EL133UF1_new_init(void)
+{
+	EL133UF1_Init();
+	return 0;
+}
+
+int EL133UF1_new_fill_index(uint8_t *inbuff)
+{
+	index_buffer = inbuff;
+
+	dst_image_buffer_m =
+		heap_caps_malloc(DST_FRAME_SIZE, MALLOC_CAP_SPIRAM);
+	dst_image_buffer_s =
+		heap_caps_malloc(DST_FRAME_SIZE, MALLOC_CAP_SPIRAM);
+	if (dst_image_buffer_m == NULL || dst_image_buffer_s == NULL) {
+		ESP_LOGE(TAG, "dst_image_buffer malloc fail");
+		return ESP_FAIL;
+	}
+
+	palette_index_to_E6_data(index_buffer, dst_image_buffer_m,
+				 dst_image_buffer_s);
+
+	ESP_LOGI(TAG, "取模完成");
+
+	return 0;
+}
+
+int EL133UF1_new_update(void)
+{
+	EL133UF1_DisplayFrame(dst_image_buffer_m, dst_image_buffer_s);
+	EL133UF1_Deinit();
+	free(dst_image_buffer_s);
+	free(dst_image_buffer_m);
+
+	return 0;
 }

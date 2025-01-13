@@ -171,7 +171,7 @@ static esp_err_t upload_post_handler(httpd_req_t *req)
 	// 初始化 PSRAM 缓存
 	psram_buffer_t *psram_buf = init_psram_buffer(MAX_FILE_SIZE);
 	if (!psram_buf) {
-		return ESP_FAIL;
+		goto upload_post_handler_error;
 	}
 
 	ESP_LOGI(TAG, "Receiving file and storing to PSRAM...");
@@ -198,8 +198,7 @@ static esp_err_t upload_post_handler(httpd_req_t *req)
 
 	if (received < 0) {
 		ESP_LOGE(TAG, "File upload failed");
-		free_psram_buffer(psram_buf);
-		return ESP_FAIL;
+		goto upload_post_handler_error;
 	}
 
 	// find file start
@@ -210,9 +209,8 @@ static esp_err_t upload_post_handler(httpd_req_t *req)
 
 	// find file ends
 	const char *end_string = "------WebKitFormBoundary";
-	size_t search_size = req->content_len > 1024 ?
-				     1024 :
-				     req->content_len; // Adjust search size
+	// Adjust search size
+	size_t search_size = req->content_len > 1024 ? 1024 : req->content_len;
 
 	pos = memmem(psram_buf->data + req->content_len - search_size,
 		     search_size, end_string, strlen(end_string));
@@ -229,7 +227,7 @@ static esp_err_t upload_post_handler(httpd_req_t *req)
 			"{\"code\":500, \"msg\":\"Upload data parse fail.\"}";
 		httpd_resp_send(req, resp_str, strlen(resp_str));
 
-		return ESP_FAIL;
+		goto upload_post_handler_error;
 	}
 
 	ESP_LOGI(TAG, "File upload successful, total size: %zu bytes",
@@ -245,7 +243,7 @@ static esp_err_t upload_post_handler(httpd_req_t *req)
 	if (f == NULL) {
 		ESP_LOGE("SDMMC", "Failed to open file for writing");
 		sdcard_unmount();
-		return ESP_FAIL;
+		goto upload_post_handler_error;
 	}
 
 	// 写入内容到文件
@@ -256,7 +254,7 @@ static esp_err_t upload_post_handler(httpd_req_t *req)
 	if (f == NULL) {
 		ESP_LOGE("SDMMC", "Failed to open file for writing");
 		sdcard_unmount();
-		return ESP_FAIL;
+		goto upload_post_handler_error;
 	}
 
 	// 写入内容到文件
@@ -276,8 +274,13 @@ static esp_err_t upload_post_handler(httpd_req_t *req)
 		 time_elapsed);
 
 	is_busy = false;
-
+	ESP_LOGI(TAG, "upload_post_handler return OK");
 	return ESP_OK;
+
+upload_post_handler_error:
+	is_busy = false;
+	free_psram_buffer(psram_buf);
+	return ESP_FAIL;
 }
 
 static esp_err_t favicon_get_handler(httpd_req_t *req)

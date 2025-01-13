@@ -91,7 +91,8 @@ void app_main(void)
 
 		show_ram_space("main: before show_start_screen");
 
-		check_and_show_start_screen();
+		//check_and_show_start_screen();
+		display_jpg_file(epd, SDCARD_MOUNT_POINT "/upload.jpg");
 
 		show_ram_space("before exit main");
 	} else {
@@ -192,8 +193,7 @@ static esp_err_t save_qr_info(void)
 
 	return ESP_OK;
 }
-
-static void check_and_show_start_screen(void)
+void check_and_show_start_screen(void)
 {
 	//const char *debug_file_path = SDCARD_MOUNT_POINT "/debug.txt";
 	const char *upload_file_path = SDCARD_MOUNT_POINT "/upload.jpg";

@@ -30,14 +30,6 @@ const char *TAG = "IMG_PRCS";
 int display_debug = 0;
 char processing_stage[20] = "idle"; // 初始阶段;
 
-void stuckiDither(uint8_t *image, uint8_t *output_index, int image_width,
-		  int image_height);
-void atkinsonDither(uint8_t *image, uint8_t *output_index, int image_width,
-		    int image_height);
-
-void palette_index_to_E6_data(uint8_t *index_buffer, uint8_t *dst_m,
-			      uint8_t *dst_s);
-
 void draw_qrcode_on_ram(YEPD *epd, uint8_t *fb1);
 
 esp_err_t decode_jpg(uint8_t *inbuff, uint32_t insize, uint8_t *outbuff,
@@ -94,24 +86,113 @@ esp_err_t decode_jpg(uint8_t *inbuff, uint32_t insize, uint8_t *outbuff,
 	return ESP_OK;
 }
 
+uint8_t **parse_palette(const char *palette_str, size_t *color_count)
+{
+	if (!palette_str || !color_count) {
+		return NULL; // 参数错误
+	}
+
+	// 初始化颜色计数
+	*color_count = 0;
+
+	// 预估调色板中的分号数量，计算大致的颜色数量
+	size_t estimated_colors = 1;
+	for (const char *p = palette_str; *p != '\0'; p++) {
+		if (*p == ';') {
+			estimated_colors++;
+		}
+	}
+
+	// 动态分配二维数组指针
+	uint8_t **palette =
+		(uint8_t **)malloc(estimated_colors * sizeof(uint8_t *));
+	if (!palette) {
+		return NULL; // 分配失败
+	}
+
+	const char *current = palette_str;
+	char *end_ptr;
+
+	// 循环解析调色板字符串
+	while (*current != '\0') {
+		if (*color_count >= estimated_colors) {
+			// 空间不足，扩容
+			estimated_colors *= 2;
+			uint8_t **temp = (uint8_t **)realloc(
+				palette, estimated_colors * sizeof(uint8_t *));
+			if (!temp) {
+				for (size_t i = 0; i < *color_count; i++) {
+					free(palette[i]);
+				}
+				free(palette);
+				return NULL; // 扩容失败
+			}
+			palette = temp;
+		}
+
+		// 为每个颜色分配 3 个字节的空间
+		palette[*color_count] = (uint8_t *)malloc(3 * sizeof(uint8_t));
+		if (!palette[*color_count]) {
+			for (size_t i = 0; i < *color_count; i++) {
+				free(palette[i]);
+			}
+			free(palette);
+			return NULL; // 分配失败
+		}
+
+		// 解析 R
+		int r = strtol(current, &end_ptr, 10);
+		if (*end_ptr != ',')
+			break; // 格式错误
+		current = end_ptr + 1;
+
+		// 解析 G
+		int g = strtol(current, &end_ptr, 10);
+		if (*end_ptr != ',')
+			break; // 格式错误
+		current = end_ptr + 1;
+
+		// 解析 B
+		int b = strtol(current, &end_ptr, 10);
+		if (*end_ptr != ';' && *end_ptr != '\0')
+			break; // 格式错误
+		current = (*end_ptr == ';') ? end_ptr + 1 : end_ptr;
+
+		// 保存颜色
+		palette[*color_count][0] = (uint8_t)r;
+		palette[*color_count][1] = (uint8_t)g;
+		palette[*color_count][2] = (uint8_t)b;
+
+		(*color_count)++;
+	}
+
+	// 调整内存到最终大小
+	uint8_t **final_palette = (uint8_t **)realloc(
+		palette, (*color_count) * sizeof(uint8_t *));
+	if (!final_palette && *color_count > 0) {
+		for (size_t i = 0; i < *color_count; i++) {
+			free(palette[i]);
+		}
+		free(palette);
+		return NULL; // 调整失败
+	}
+
+	return final_palette;
+}
+
 esp_err_t display_jpg_file(YEPD *epd, const char *filename)
 {
 	const char *TAG = "display_jpg_file";
 	esp_err_t ret = ESP_OK;
 
-	uint32_t DST_FRAME_SIZE = EPD_FRAME_SIZE;
+	//uint32_t DST_FRAME_SIZE = EPD_FRAME_SIZE;
+	uint32_t file_size = 0;
 	uint8_t *jpg_file_buff = NULL;
 	uint8_t *rgb_buff = NULL;
-	uint8_t *index_buffer = NULL;
-	uint8_t *dst_image_buffer_m = NULL;
-	uint8_t *dst_image_buffer_s = NULL;
+	uint32_t rgb_buff_size = epd->width * epd->height * 3;
 
-	//uint16_t w = EPD_WIDTH;
-	//uint16_t h = EPD_HEIGHT;
 	uint16_t w_img = 0;
 	uint16_t h_img = 0;
-	uint32_t file_size = 0;
-	uint32_t rgb_buff_size = epd->width * epd->height * 3;
 
 	// read jpg file to psram
 	jpg_file_buff = SD_MMC_ReadFileToPsram(filename, &file_size);
@@ -121,8 +202,7 @@ esp_err_t display_jpg_file(YEPD *epd, const char *filename)
 	}
 
 	// alloc rgb_buff
-	rgb_buff =
-		(uint8_t *)heap_caps_malloc(rgb_buff_size, MALLOC_CAP_SPIRAM);
+	rgb_buff = heap_caps_malloc(rgb_buff_size, MALLOC_CAP_SPIRAM);
 	if (rgb_buff == NULL) {
 		ESP_LOGE(TAG, "rgb_buff malloc fail");
 		return ESP_FAIL;
@@ -135,6 +215,40 @@ esp_err_t display_jpg_file(YEPD *epd, const char *filename)
 
 	free(jpg_file_buff);
 	show_ram_space("after free jpg_file_buff");
+
+#if 1
+	// 解析调色板
+	size_t color_count = 0;
+	uint8_t **palette = parse_palette(epd->palette, &color_count);
+	if (!palette) {
+		printf("Failed to parse palette.\n");
+		return 1;
+	}
+	printf("Parsed %zu colors:\n", color_count);
+	for (size_t i = 0; i < color_count; i++) {
+		printf("Color %zu: R=%d, G=%d, B=%d\n", i, palette[i][0],
+		       palette[i][1], palette[i][2]);
+	}
+
+	uint8_t *index_buffer =
+		heap_caps_malloc(epd->width * epd->height, MALLOC_CAP_SPIRAM);
+	if (index_buffer == NULL) {
+		ESP_LOGE(TAG, "index_buffer malloc fail");
+		return ESP_FAIL;
+	}
+	show_ram_space("after malloc index_buffer");
+
+	// process dither
+	atkinsonDither_Dynamic(rgb_buff, index_buffer, epd->width, epd->height,
+			       palette, color_count);
+	show_ram_space("after dither, before free rgb_buff");
+
+	free(rgb_buff);
+	show_ram_space("after free rgb_buff");
+
+	// TODO: 检查剩余最大内存是否足够缓存w*h的大小
+#endif
+#if 0
 
 	index_buffer =
 		heap_caps_malloc(epd->width * epd->height, MALLOC_CAP_SPIRAM);
@@ -172,36 +286,16 @@ esp_err_t display_jpg_file(YEPD *epd, const char *filename)
 	EL133UF1_Init();
 	EL133UF1_DisplayFrame(dst_image_buffer_m, dst_image_buffer_s);
 	EL133UF1_Deinit();
+#endif
+	epd->init();
+	epd->fill_index(index_buffer);
+	epd->update();
 
-	//epd->init();
-	//epd->fill(0, 0, epd->width, epd->height, rgb_buff);
-	//epd->update();
-
-	free(dst_image_buffer_m);
-	free(dst_image_buffer_s);
-	ESP_LOGI(TAG, "显示完成");
-	show_ram_space("end of display_jpg_file");
+	free(index_buffer);
+	free(palette); // 释放数组指针
 
 	return ret;
 }
-
-// 交换两个像素，大小为 3 字节 (RGB)
-void swap_pixels(unsigned char *a, unsigned char *b)
-{
-	unsigned char temp[3];
-	memcpy(temp, a, 3);
-	memcpy(a, b, 3);
-	memcpy(b, temp, 3);
-}
-
-const uint8_t palette[PALETTE_SIZE][3] = {
-	{ 0x00, 0x00, 0x00 }, //BLACK 0,index = 0
-	{ 0xFF, 0xFF, 0xFF }, //WHITE 1,index = 1
-	{ 0xFF, 0xFF, 0x00 }, //YELLOW 2,index = 2
-	{ 0xFF, 0x00, 0x00 }, //RED 3,index = 3
-	{ 0x00, 0x00, 0xFF }, //BLUE 4,index = 5
-	{ 0x00, 0xFF, 0x00 }, //GREEN 5,index = 6
-};
 
 uint8_t plus_truncate_uchar(uint8_t a, int b)
 {
@@ -214,11 +308,12 @@ uint8_t plus_truncate_uchar(uint8_t a, int b)
 	}
 }
 
-uint8_t FindNearestColor(uint8_t *pixel_rgb)
+uint8_t FindNearestColorDynamic(uint8_t *pixel_rgb, uint8_t **palette,
+				size_t palette_size)
 {
 	int minDistanceSquared = 255 * 255 + 255 * 255 + 255 * 255 + 1;
 	int bestIndex = 0;
-	for (int i = 0; i < PALETTE_SIZE; i++) {
+	for (size_t i = 0; i < palette_size; i++) {
 		int Rdiff = ((int)pixel_rgb[0] & 0xff) -
 			    ((int)palette[i][0] & 0xff);
 		int Gdiff = ((int)pixel_rgb[1] & 0xff) -
@@ -227,6 +322,7 @@ uint8_t FindNearestColor(uint8_t *pixel_rgb)
 			    ((int)palette[i][2] & 0xff);
 		int distanceSquared =
 			Rdiff * Rdiff + Gdiff * Gdiff + Bdiff * Bdiff;
+
 		if (distanceSquared < minDistanceSquared) {
 			minDistanceSquared = distanceSquared;
 			bestIndex = i;
@@ -235,186 +331,29 @@ uint8_t FindNearestColor(uint8_t *pixel_rgb)
 	return (uint8_t)bestIndex;
 }
 
-void stuckiDither(uint8_t *image, uint8_t *output_index, int image_width,
-		  int image_height)
-{
-	const char *TAG = "Dithering";
-	ESP_LOGI(TAG, "start");
-	for (int y = 0; y < image_height; y++) {
-		if (y % 10 == 0) { // 可以尝试让出 CPU 的频率，比如每 10 行
-			taskYIELD(); // 或者 vTaskDelay(1)
-		}
-
-		for (int x = 0; x < image_width; x++) {
-			//taskYIELD(); // 或者 vTaskDelay(1) 来让出 CPU
-
-			uint8_t *currentPixel =
-				image + (y * image_width + x) * 3;
-			uint8_t index = FindNearestColor(currentPixel);
-			output_index[y * image_width + x] = index;
-
-			for (int i = 0; i < 3; i++) { //RGB
-				//计算误差
-				int error = (currentPixel[i] & 0xff) -
-					    (palette[index][i] & 0xff);
-				//扩散误差
-				int pixel_offset = (y * image_width + x) * 3;
-				if (x + 1 < image_width) {
-					image[pixel_offset + 3 + i] =
-						plus_truncate_uchar(
-							image[pixel_offset + 3 +
-							      i],
-							(error * 8) / 42);
-				}
-				if (x + 2 < image_width) {
-					image[pixel_offset + 6 + i] =
-						plus_truncate_uchar(
-							image[pixel_offset + 6 +
-							      i],
-							(error * 4) / 42);
-				}
-				if (y + 1 < image_height) {
-					if (x - 2 > 0) {
-						image[pixel_offset +
-						      image_width * 3 - 6 + i] =
-							plus_truncate_uchar(
-								image[pixel_offset +
-								      image_width *
-									      3 -
-								      6 + i],
-								(error * 2) /
-									42);
-					}
-					if (x - 1 > 0) {
-						image[pixel_offset +
-						      image_width * 3 - 3 + i] =
-							plus_truncate_uchar(
-								image[pixel_offset +
-								      image_width *
-									      3 -
-								      3 + i],
-								(error * 4) /
-									42);
-					}
-					{ // x = x
-						image[pixel_offset +
-						      image_width * 3 + i] =
-							plus_truncate_uchar(
-								image[pixel_offset +
-								      image_width *
-									      3 +
-								      i],
-								(error * 8) /
-									42);
-					}
-					if (x + 1 < image_width) {
-						image[pixel_offset +
-						      image_width * 3 + 3 + i] =
-							plus_truncate_uchar(
-								image[pixel_offset +
-								      image_width *
-									      3 +
-								      3 + i],
-								(error * 4) /
-									42);
-					}
-					if (x + 2 < image_width) {
-						image[pixel_offset +
-						      image_width * 3 + 6 + i] =
-							plus_truncate_uchar(
-								image[pixel_offset +
-								      image_width *
-									      3 +
-								      6 + i],
-								(error * 2) /
-									42);
-					}
-				}
-				if (y + 2 < image_height) {
-					if (x - 2 > 0) {
-						image[pixel_offset +
-						      image_width * 6 - 6 + i] =
-							plus_truncate_uchar(
-								image[pixel_offset +
-								      image_width *
-									      6 -
-								      6 + i],
-								(error * 1) /
-									42);
-					}
-					if (x - 1 > 0) {
-						image[pixel_offset +
-						      image_width * 6 - 3 + i] =
-							plus_truncate_uchar(
-								image[pixel_offset +
-								      image_width *
-									      6 -
-								      3 + i],
-								(error * 2) /
-									42);
-					}
-					{ // x = x
-						image[pixel_offset +
-						      image_width * 6 + i] =
-							plus_truncate_uchar(
-								image[pixel_offset +
-								      image_width *
-									      6 +
-								      i],
-								(error * 4) /
-									42);
-					}
-					if (x + 1 < image_width) {
-						image[pixel_offset +
-						      image_width * 6 + 3 + i] =
-							plus_truncate_uchar(
-								image[pixel_offset +
-								      image_width *
-									      6 +
-								      3 + i],
-								(error * 2) /
-									42);
-					}
-					if (x + 2 < image_width) {
-						image[pixel_offset +
-						      image_width * 6 + 6 + i] =
-							plus_truncate_uchar(
-								image[pixel_offset +
-								      image_width *
-									      6 +
-								      6 + i],
-								(error * 1) /
-									42);
-					}
-				}
-			}
-		}
-	}
-
-	printf(".\r\n");
-}
-
-void atkinsonDither(uint8_t *image, uint8_t *output_index, int image_width,
-		    int image_height)
+void atkinsonDither_Dynamic(uint8_t *image, uint8_t *output_index,
+			    int image_width, int image_height,
+			    uint8_t **palette, size_t palette_size)
 {
 	ESP_LOGI(TAG, "dither start");
 
 	for (int y = 0; y < image_height; y++) {
-		if ((y % 80) == 0) { // 可以尝试让出 CPU 的频率，比如每 10 行
-			vTaskDelay(1); //taskYIELD(); // 或者 vTaskDelay(1)
+		if ((y % 80) == 0) {
+			vTaskDelay(1); // 可以尝试让出 CPU 的频率
 		}
 
 		for (int x = 0; x < image_width; x++) {
 			uint8_t *currentPixel =
 				image + (y * image_width + x) * 3;
-			uint8_t index = FindNearestColor(currentPixel);
+			uint8_t index = FindNearestColorDynamic(
+				currentPixel, palette, palette_size);
 			output_index[y * image_width + x] = index;
 
-			for (int i = 0; i < 3; i++) { //RGB
-				//计算误差
+			for (int i = 0; i < 3; i++) { // RGB
+				// 计算误差
 				int error = (currentPixel[i] & 0xff) -
 					    (palette[index][i] & 0xff);
-				//扩散误差
+				// 扩散误差
 				int pixel_offset = (y * image_width + x) * 3;
 				if (x + 1 < image_width) {
 					image[pixel_offset + 3 + i] =
@@ -442,17 +381,14 @@ void atkinsonDither(uint8_t *image, uint8_t *output_index, int image_width,
 								(error * 1) /
 									8);
 					}
-					{ // x = x
-						image[pixel_offset +
-						      image_width * 3 + i] =
-							plus_truncate_uchar(
-								image[pixel_offset +
-								      image_width *
-									      3 +
-								      i],
-								(error * 1) /
-									8);
-					}
+					image[pixel_offset + image_width * 3 +
+					      i] =
+						plus_truncate_uchar(
+							image[pixel_offset +
+							      image_width * 3 +
+							      i],
+							(error * 1) / 8);
+
 					if (x + 1 < image_width) {
 						image[pixel_offset +
 						      image_width * 3 + 3 + i] =
@@ -466,17 +402,13 @@ void atkinsonDither(uint8_t *image, uint8_t *output_index, int image_width,
 					}
 				}
 				if (y + 2 < image_height) {
-					{ // x = x
-						image[pixel_offset +
-						      image_width * 6 + i] =
-							plus_truncate_uchar(
-								image[pixel_offset +
-								      image_width *
-									      6 +
-								      i],
-								(error * 1) /
-									8);
-					}
+					image[pixel_offset + image_width * 6 +
+					      i] =
+						plus_truncate_uchar(
+							image[pixel_offset +
+							      image_width * 6 +
+							      i],
+							(error * 1) / 8);
 				}
 			}
 		}
@@ -723,9 +655,9 @@ void show_start_screen(YEPD *epd)
 	palette_index_to_E6_data(fb1, fbm, fbs);
 
 	// ppd send data, update
-	EL133UF1_Init();
-	EL133UF1_DisplayFrame(fbm, fbs);
-	EL133UF1_Deinit();
+	//EL133UF1_Init();
+	//EL133UF1_DisplayFrame(fbm, fbs);
+	//EL133UF1_Deinit();
 
 	free(fbs);
 	free(fbm);
