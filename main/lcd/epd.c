@@ -41,7 +41,7 @@ YEPD epd_list[] = {
 		EL133UF1_new_fill_index,
 		EL133UF1_new_update,
 	},
-	{ NULL, 0, 0, NULL, NULL, NULL },
+	{ NULL, 0, 0, NULL, NULL, NULL, NULL },
 };
 
 static int yepd_get_index_by_name(const char *module_name)
@@ -58,16 +58,6 @@ static int yepd_get_index_by_name(const char *module_name)
 
 	return -1; // 未找到，返回 -1
 }
-
-#if 0
-static YEPD *yepd_get_by_index(int index)
-{
-	if (index >= 0 && epd_list[index].name != NULL) {
-		return &epd_list[index]; // 返回指向该对象的指针
-	}
-	return NULL; // 如果索引无效，返回 NULL
-}
-#endif
 
 YEPD *yepd_init_by_name(const char *module_name)
 {

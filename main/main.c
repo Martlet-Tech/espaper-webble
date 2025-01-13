@@ -193,6 +193,7 @@ static esp_err_t save_qr_info(void)
 
 	return ESP_OK;
 }
+
 void check_and_show_start_screen(void)
 {
 	//const char *debug_file_path = SDCARD_MOUNT_POINT "/debug.txt";

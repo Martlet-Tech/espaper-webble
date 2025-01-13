@@ -180,123 +180,6 @@ uint8_t **parse_palette(const char *palette_str, size_t *color_count)
 	return final_palette;
 }
 
-esp_err_t display_jpg_file(YEPD *epd, const char *filename)
-{
-	const char *TAG = "display_jpg_file";
-	esp_err_t ret = ESP_OK;
-
-	//uint32_t DST_FRAME_SIZE = EPD_FRAME_SIZE;
-	uint32_t file_size = 0;
-	uint8_t *jpg_file_buff = NULL;
-	uint8_t *rgb_buff = NULL;
-	uint32_t rgb_buff_size = epd->width * epd->height * 3;
-
-	uint16_t w_img = 0;
-	uint16_t h_img = 0;
-
-	// read jpg file to psram
-	jpg_file_buff = SD_MMC_ReadFileToPsram(filename, &file_size);
-	if ((jpg_file_buff == NULL) || (file_size == 0)) {
-		ESP_LOGE(TAG, "read jpg file fail");
-		return ESP_FAIL;
-	}
-
-	// alloc rgb_buff
-	rgb_buff = heap_caps_malloc(rgb_buff_size, MALLOC_CAP_SPIRAM);
-	if (rgb_buff == NULL) {
-		ESP_LOGE(TAG, "rgb_buff malloc fail");
-		return ESP_FAIL;
-	}
-	show_ram_space("after malloc rgb_buff");
-
-	// decode jpg file to rgb ram
-	ESP_ERROR_CHECK(decode_jpg(jpg_file_buff, file_size, rgb_buff,
-				   rgb_buff_size, &w_img, &h_img));
-
-	free(jpg_file_buff);
-	show_ram_space("after free jpg_file_buff");
-
-#if 1
-	// 解析调色板
-	size_t color_count = 0;
-	uint8_t **palette = parse_palette(epd->palette, &color_count);
-	if (!palette) {
-		printf("Failed to parse palette.\n");
-		return 1;
-	}
-	printf("Parsed %zu colors:\n", color_count);
-	for (size_t i = 0; i < color_count; i++) {
-		printf("Color %zu: R=%d, G=%d, B=%d\n", i, palette[i][0],
-		       palette[i][1], palette[i][2]);
-	}
-
-	uint8_t *index_buffer =
-		heap_caps_malloc(epd->width * epd->height, MALLOC_CAP_SPIRAM);
-	if (index_buffer == NULL) {
-		ESP_LOGE(TAG, "index_buffer malloc fail");
-		return ESP_FAIL;
-	}
-	show_ram_space("after malloc index_buffer");
-
-	// process dither
-	atkinsonDither_Dynamic(rgb_buff, index_buffer, epd->width, epd->height,
-			       palette, color_count);
-	show_ram_space("after dither, before free rgb_buff");
-
-	free(rgb_buff);
-	show_ram_space("after free rgb_buff");
-
-	// TODO: 检查剩余最大内存是否足够缓存w*h的大小
-#endif
-#if 0
-
-	index_buffer =
-		heap_caps_malloc(epd->width * epd->height, MALLOC_CAP_SPIRAM);
-	if (index_buffer == NULL) {
-		ESP_LOGE(TAG, "index_buffer malloc fail");
-		return ESP_FAIL;
-	}
-	//show_ram_space("after malloc index_buffer");
-
-	// process dither
-	//stuckiDither((uint8_t *)org_image_buffer, (uint8_t *)index_buffer, w, h);]
-	atkinsonDither(rgb_buff, index_buffer, epd->width, epd->height);
-
-	free(rgb_buff);
-	show_ram_space("after free rgb_buff");
-
-	vTaskDelay(20 / portTICK_PERIOD_MS);
-
-	// draw qr code
-	draw_qrcode_on_ram(epd, index_buffer);
-
-	// make epd buff
-	dst_image_buffer_m =
-		(uint8_t *)heap_caps_malloc(DST_FRAME_SIZE, MALLOC_CAP_SPIRAM);
-	dst_image_buffer_s =
-		(uint8_t *)heap_caps_malloc(DST_FRAME_SIZE, MALLOC_CAP_SPIRAM);
-	palette_index_to_E6_data(index_buffer, dst_image_buffer_m,
-				 dst_image_buffer_s);
-	free(index_buffer);
-	show_ram_space("after free  index_buffer");
-
-	ESP_LOGI(TAG, "取模完成");
-
-	// update epd
-	EL133UF1_Init();
-	EL133UF1_DisplayFrame(dst_image_buffer_m, dst_image_buffer_s);
-	EL133UF1_Deinit();
-#endif
-	epd->init();
-	epd->fill_index(index_buffer);
-	epd->update();
-
-	free(index_buffer);
-	free(palette); // 释放数组指针
-
-	return ret;
-}
-
 uint8_t plus_truncate_uchar(uint8_t a, int b)
 {
 	if ((a & 0xff) + b < 0) {
@@ -314,12 +197,9 @@ uint8_t FindNearestColorDynamic(uint8_t *pixel_rgb, uint8_t **palette,
 	int minDistanceSquared = 255 * 255 + 255 * 255 + 255 * 255 + 1;
 	int bestIndex = 0;
 	for (size_t i = 0; i < palette_size; i++) {
-		int Rdiff = ((int)pixel_rgb[0] & 0xff) -
-			    ((int)palette[i][0] & 0xff);
-		int Gdiff = ((int)pixel_rgb[1] & 0xff) -
-			    ((int)palette[i][1] & 0xff);
-		int Bdiff = ((int)pixel_rgb[2] & 0xff) -
-			    ((int)palette[i][2] & 0xff);
+		int Rdiff = ((int)pixel_rgb[0]) - ((int)palette[i][0]);
+		int Gdiff = ((int)pixel_rgb[1]) - ((int)palette[i][1]);
+		int Bdiff = ((int)pixel_rgb[2]) - ((int)palette[i][2]);
 		int distanceSquared =
 			Rdiff * Rdiff + Gdiff * Gdiff + Bdiff * Bdiff;
 
@@ -338,7 +218,7 @@ void atkinsonDither_Dynamic(uint8_t *image, uint8_t *output_index,
 	ESP_LOGI(TAG, "dither start");
 
 	for (int y = 0; y < image_height; y++) {
-		if ((y % 80) == 0) {
+		if ((y % 200) == 0) {
 			vTaskDelay(1); // 可以尝试让出 CPU 的频率
 		}
 
@@ -360,14 +240,14 @@ void atkinsonDither_Dynamic(uint8_t *image, uint8_t *output_index,
 						plus_truncate_uchar(
 							image[pixel_offset + 3 +
 							      i],
-							(error * 1) / 8);
+							(error >> 3));
 				}
 				if (x + 2 < image_width) {
 					image[pixel_offset + 6 + i] =
 						plus_truncate_uchar(
 							image[pixel_offset + 6 +
 							      i],
-							(error * 1) / 8);
+							(error >> 3));
 				}
 				if (y + 1 < image_height) {
 					if (x - 1 > 0) {
@@ -378,8 +258,7 @@ void atkinsonDither_Dynamic(uint8_t *image, uint8_t *output_index,
 								      image_width *
 									      3 -
 								      3 + i],
-								(error * 1) /
-									8);
+								(error >> 3));
 					}
 					image[pixel_offset + image_width * 3 +
 					      i] =
@@ -387,7 +266,7 @@ void atkinsonDither_Dynamic(uint8_t *image, uint8_t *output_index,
 							image[pixel_offset +
 							      image_width * 3 +
 							      i],
-							(error * 1) / 8);
+							(error >> 3));
 
 					if (x + 1 < image_width) {
 						image[pixel_offset +
@@ -397,8 +276,7 @@ void atkinsonDither_Dynamic(uint8_t *image, uint8_t *output_index,
 								      image_width *
 									      3 +
 								      3 + i],
-								(error * 1) /
-									8);
+								(error >> 3));
 					}
 				}
 				if (y + 2 < image_height) {
@@ -408,7 +286,7 @@ void atkinsonDither_Dynamic(uint8_t *image, uint8_t *output_index,
 							image[pixel_offset +
 							      image_width * 6 +
 							      i],
-							(error * 1) / 8);
+							(error >> 3));
 				}
 			}
 		}
@@ -452,6 +330,81 @@ void palette_index_to_E6_data(uint8_t *index_buffer, uint8_t *dst_m,
 			}
 		}
 	}
+}
+
+esp_err_t display_jpg_file(YEPD *epd, const char *filename)
+{
+	const char *TAG = "display_jpg_file";
+	esp_err_t ret = ESP_OK;
+
+	uint32_t file_size = 0;
+	uint8_t *jpg_file_buff = NULL;
+	uint8_t *rgb_buff = NULL;
+	uint32_t rgb_buff_size = epd->width * epd->height * 3;
+
+	uint16_t w_img = 0;
+	uint16_t h_img = 0;
+
+	// read jpg file to psram
+	jpg_file_buff = SD_MMC_ReadFileToPsram(filename, &file_size);
+	if ((jpg_file_buff == NULL) || (file_size == 0)) {
+		ESP_LOGE(TAG, "read jpg file fail");
+		return ESP_FAIL;
+	}
+
+	// alloc rgb_buff
+	rgb_buff = heap_caps_malloc(rgb_buff_size, MALLOC_CAP_SPIRAM);
+	if (rgb_buff == NULL) {
+		ESP_LOGE(TAG, "rgb_buff malloc fail");
+		return ESP_FAIL;
+	}
+	show_ram_space("after malloc rgb_buff");
+
+	// decode jpg file to rgb_buff
+	ESP_ERROR_CHECK(decode_jpg(jpg_file_buff, file_size, rgb_buff,
+				   rgb_buff_size, &w_img, &h_img));
+
+	free(jpg_file_buff);
+	show_ram_space("after free jpg_file_buff");
+
+	// 解析调色板
+	size_t color_count = 0;
+	uint8_t **palette = parse_palette(epd->palette, &color_count);
+	if (!palette) {
+		printf("Failed to parse palette.\n");
+		return 1;
+	}
+	printf("Parsed %zu colors:\n", color_count);
+	for (size_t i = 0; i < color_count; i++) {
+		printf("Color %zu: R=%d, G=%d, B=%d\n", i, palette[i][0],
+		       palette[i][1], palette[i][2]);
+	}
+
+	// 像素对调色板索引缓存
+	uint8_t *index_buffer =
+		heap_caps_malloc(epd->width * epd->height, MALLOC_CAP_SPIRAM);
+	if (index_buffer == NULL) {
+		ESP_LOGE(TAG, "index_buffer malloc fail");
+		return ESP_FAIL;
+	}
+	show_ram_space("after malloc index_buffer");
+
+	// process dither
+	atkinsonDither_Dynamic(rgb_buff, index_buffer, epd->width, epd->height,
+			       palette, color_count);
+	show_ram_space("after dither, before free rgb_buff");
+
+	free(rgb_buff);
+	show_ram_space("after free rgb_buff");
+
+	epd->init();
+	epd->fill_index(index_buffer);
+	epd->update();
+
+	free(index_buffer);
+	free(palette); // 释放数组指针
+
+	return ret;
 }
 
 void draw_px_ug_port(int16_t x, int16_t y, uint32_t color, void *fb)
@@ -695,14 +648,6 @@ jpeg_error_t esp_jpeg_encode_one_picture(uint32_t w, uint32_t h, uint8_t *inbuf,
 	if (ret != JPEG_ERR_OK) {
 		return ret;
 	}
-
-	// allocate output buffer to fill encoded image stream
-	// outbuf = (uint8_t *)calloc(1, outbuf_size);
-	//outbuf = heap_caps_malloc(100 * 1024, MALLOC_CAP_SPIRAM);
-	//if (outbuf == NULL) {
-	//	ret = JPEG_ERR_NO_MEM;
-	//	goto jpeg_example_exit;
-	//}
 
 	// process
 	ret = jpeg_enc_process(jpeg_enc, inbuf, image_size, outbuf, 100 * 1024,
