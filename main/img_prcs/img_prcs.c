@@ -344,6 +344,8 @@ esp_err_t display_jpg_file(YEPD *epd, const char *filename)
 	uint16_t w_img = 0;
 	uint16_t h_img = 0;
 
+	show_ram_space("start of display_jpg_file");
+
 	// read jpg file to psram
 	jpg_file_buff = SD_MMC_ReadFileToPsram(filename, &file_size);
 	if ((jpg_file_buff == NULL) || (file_size == 0)) {
@@ -407,6 +409,7 @@ esp_err_t display_jpg_file(YEPD *epd, const char *filename)
 
 	free(index_buffer);
 	free(palette); // 释放数组指针
+	show_ram_space("end of display_jpg_file");
 
 	return ret;
 }

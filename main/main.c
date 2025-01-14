@@ -88,12 +88,9 @@ void app_main(void)
 
 		vTaskDelay(100 / portTICK_PERIOD_MS);
 
-		show_ram_space("main: before show_start_screen");
-
 		//check_and_show_start_screen();
 		display_jpg_file(epd, SDCARD_MOUNT_POINT "/upload.jpg");
 
-		show_ram_space("before exit main");
 	} else {
 		ESP_LOGE(TAG, "sdcard test failed");
 	}
