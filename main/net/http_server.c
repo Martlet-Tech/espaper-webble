@@ -21,7 +21,6 @@
 #include "bsp.h"
 #include "utils.h"
 #include "img_prcs.h"
-#include "esp_timer.h"
 #include "esp_event.h"
 #include "epd.h"
 
@@ -266,12 +265,7 @@ static esp_err_t upload_post_handler(httpd_req_t *req)
 	free_psram_buffer(psram_buf);
 	strcpy(processing_stage, "decoding");
 
-	int64_t start_time = esp_timer_get_time();
 	display_jpg_file(epd, SDCARD_MOUNT_POINT "/upload.jpg");
-	int64_t end_time = esp_timer_get_time();
-	int64_t time_elapsed = end_time - start_time;
-	ESP_LOGI(TAG, "display_jpg_file execution time: %lld us\n",
-		 time_elapsed);
 
 	is_busy = false;
 	ESP_LOGI(TAG, "upload_post_handler return OK");

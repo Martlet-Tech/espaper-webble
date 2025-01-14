@@ -34,7 +34,6 @@
 #include "ap.h"
 #include "http_server.h"
 #include "bsp.h"
-#include "YMS16001200-1330AAX-E6.h"
 #include "img_prcs.h"
 #include "utils.h"
 #include "comm.h"

@@ -21,11 +21,11 @@
 #include "qr_encode.h"
 #include "esp_jpeg_dec.h"
 #include "esp_task_wdt.h"
+#include "esp_timer.h"
 #include <esp_netif.h>
 #include <esp_netif_types.h>
 #include "esp_wifi.h"
 
-#define PALETTE_SIZE 6
 const char *TAG = "IMG_PRCS";
 int display_debug = 0;
 char processing_stage[20] = "idle"; // 初始阶段;
@@ -180,7 +180,7 @@ uint8_t **parse_palette(const char *palette_str, size_t *color_count)
 	return final_palette;
 }
 
-uint8_t plus_truncate_uchar(uint8_t a, int b)
+uint8_t bounded_add_u8(uint8_t a, int b)
 {
 	if ((a & 0xff) + b < 0) {
 		return 0;
@@ -191,8 +191,8 @@ uint8_t plus_truncate_uchar(uint8_t a, int b)
 	}
 }
 
-uint8_t FindNearestColorDynamic(uint8_t *pixel_rgb, uint8_t **palette,
-				size_t palette_size)
+uint8_t find_nearest_color(uint8_t *pixel_rgb, uint8_t **palette,
+			   size_t palette_size)
 {
 	int minDistanceSquared = 255 * 255 + 255 * 255 + 255 * 255 + 1;
 	int bestIndex = 0;
@@ -211,9 +211,8 @@ uint8_t FindNearestColorDynamic(uint8_t *pixel_rgb, uint8_t **palette,
 	return (uint8_t)bestIndex;
 }
 
-void atkinsonDither_Dynamic(uint8_t *image, uint8_t *output_index,
-			    int image_width, int image_height,
-			    uint8_t **palette, size_t palette_size)
+void atkinson_dither(uint8_t *image, uint8_t *output_index, int image_width,
+		     int image_height, uint8_t **palette, size_t palette_size)
 {
 	ESP_LOGI(TAG, "dither start");
 
@@ -225,7 +224,7 @@ void atkinsonDither_Dynamic(uint8_t *image, uint8_t *output_index,
 		for (int x = 0; x < image_width; x++) {
 			uint8_t *currentPixel =
 				image + (y * image_width + x) * 3;
-			uint8_t index = FindNearestColorDynamic(
+			uint8_t index = find_nearest_color(
 				currentPixel, palette, palette_size);
 			output_index[y * image_width + x] = index;
 
@@ -237,14 +236,14 @@ void atkinsonDither_Dynamic(uint8_t *image, uint8_t *output_index,
 				int pixel_offset = (y * image_width + x) * 3;
 				if (x + 1 < image_width) {
 					image[pixel_offset + 3 + i] =
-						plus_truncate_uchar(
+						bounded_add_u8(
 							image[pixel_offset + 3 +
 							      i],
 							(error >> 3));
 				}
 				if (x + 2 < image_width) {
 					image[pixel_offset + 6 + i] =
-						plus_truncate_uchar(
+						bounded_add_u8(
 							image[pixel_offset + 6 +
 							      i],
 							(error >> 3));
@@ -253,7 +252,7 @@ void atkinsonDither_Dynamic(uint8_t *image, uint8_t *output_index,
 					if (x - 1 > 0) {
 						image[pixel_offset +
 						      image_width * 3 - 3 + i] =
-							plus_truncate_uchar(
+							bounded_add_u8(
 								image[pixel_offset +
 								      image_width *
 									      3 -
@@ -262,7 +261,7 @@ void atkinsonDither_Dynamic(uint8_t *image, uint8_t *output_index,
 					}
 					image[pixel_offset + image_width * 3 +
 					      i] =
-						plus_truncate_uchar(
+						bounded_add_u8(
 							image[pixel_offset +
 							      image_width * 3 +
 							      i],
@@ -271,7 +270,7 @@ void atkinsonDither_Dynamic(uint8_t *image, uint8_t *output_index,
 					if (x + 1 < image_width) {
 						image[pixel_offset +
 						      image_width * 3 + 3 + i] =
-							plus_truncate_uchar(
+							bounded_add_u8(
 								image[pixel_offset +
 								      image_width *
 									      3 +
@@ -282,7 +281,7 @@ void atkinsonDither_Dynamic(uint8_t *image, uint8_t *output_index,
 				if (y + 2 < image_height) {
 					image[pixel_offset + image_width * 6 +
 					      i] =
-						plus_truncate_uchar(
+						bounded_add_u8(
 							image[pixel_offset +
 							      image_width * 6 +
 							      i],
@@ -390,8 +389,13 @@ esp_err_t display_jpg_file(YEPD *epd, const char *filename)
 	show_ram_space("after malloc index_buffer");
 
 	// process dither
-	atkinsonDither_Dynamic(rgb_buff, index_buffer, epd->width, epd->height,
-			       palette, color_count);
+	int64_t start_time = esp_timer_get_time();
+	atkinson_dither(rgb_buff, index_buffer, epd->width, epd->height,
+			palette, color_count);
+	int64_t end_time = esp_timer_get_time();
+	int64_t time_elapsed = end_time - start_time;
+	ESP_LOGI(TAG, "dither execution time: %lld us\n", time_elapsed);
+
 	show_ram_space("after dither, before free rgb_buff");
 
 	free(rgb_buff);
@@ -415,31 +419,6 @@ void draw_px_ug_port(int16_t x, int16_t y, uint32_t color, void *fb)
 		ESP_LOGE("draw_px_ug_port", "fb not initial");
 	}
 
-	if (((y % 80) == 0) || ((x % 80) == 0)) {
-		vPortYield();
-	}
-}
-
-void draw_px_24bpp(int16_t x, int16_t y, uint32_t color, void *fb)
-{
-	if (fb) {
-		// Calculate the memory location of the pixel
-		uint8_t *pixel_addr = ((uint8_t *)fb) + (y * EPD_WIDTH + x) * 3;
-
-		// Extract the RGB components from the 24-bit color
-		uint8_t red = (color >> 16) & 0xFF;
-		uint8_t green = (color >> 8) & 0xFF;
-		uint8_t blue = color & 0xFF;
-
-		// Assign the RGB components to the framebuffer
-		pixel_addr[0] = red;
-		pixel_addr[1] = green;
-		pixel_addr[2] = blue;
-	} else {
-		ESP_LOGE("draw_px_ug_port_24bpp", "fb not initial");
-	}
-
-	// Yield periodically to avoid watchdog resets in long-running loops
 	if (((y % 80) == 0) || ((x % 80) == 0)) {
 		vPortYield();
 	}

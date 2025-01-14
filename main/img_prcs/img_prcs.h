@@ -30,7 +30,7 @@ void show_start_screen(YEPD *epd);
 void draw_qr_code(uint16_t x, uint16_t y, int width_t, int side,
 		  uint8_t *bitdata, void *fb, draw_px_func_t draw_px);
 
-void atkinsonDither_Dynamic(uint8_t *image, uint8_t *output_index,
+void atkinson_dither(uint8_t *image, uint8_t *output_index,
 			    int image_width, int image_height,
 			    uint8_t **palette, size_t palette_size);
 void palette_index_to_E6_data(uint8_t *index_buffer, uint8_t *dst_m,
