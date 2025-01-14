@@ -45,7 +45,7 @@ extern int display_debug;
 
 extern YEPD *epd; // global epd pointer, defined in bsp.c
 
-void app_gpio_initial(void);
+void bsp_gpio_initial(void);
 static esp_err_t save_qr_info(void);
 
 static void check_and_show_start_screen(void);
@@ -65,7 +65,9 @@ void app_main(void)
 	}
 	ESP_ERROR_CHECK(ret);
 
-	app_gpio_initial();
+	gpio_install_isr_service(0); // 安装 GPIO 中断服务
+	bsp_gpio_initial();
+	printf("GPIO monitoring initialized.\n");
 
 	gpio_set_level(PIN_SW3, 1);
 	vTaskDelay(20 / portTICK_PERIOD_MS);
@@ -88,23 +90,53 @@ void app_main(void)
 
 		vTaskDelay(100 / portTICK_PERIOD_MS);
 
-		//check_and_show_start_screen();
-		display_jpg_file(epd, SDCARD_MOUNT_POINT "/upload.jpg");
+		int max_jpg_number = scan_and_sort_images();
+		ESP_LOGI(TAG, "max_jpg_number: %d", max_jpg_number);
+
+		if (max_jpg_number < 1) {
+			ESP_LOGE(TAG, "jpg_list is NULL");
+			display_palette(epd);
+		} else {
+			int biggest_file_num =
+				get_file_num_from_index(max_jpg_number - 1);
+			set_current_image_number(biggest_file_num);
+
+			ESP_LOGI(TAG, "jpg_list is not NULL");
+			display_jpg_numble(epd, biggest_file_num);
+		}
+#if 0
+		int *jpg_f_list = NULL;
+		int jpg_f_cnt = bsp_get_jpg_count();
+		ESP_LOGI(TAG, "jpg file count: %d", jpg_f_cnt);
+		if (jpg_f_cnt > 0) {
+			jpg_f_list = bsp_get_jpg_numbers(&jpg_f_cnt);
+			if (jpg_f_list) {
+				for (int i = 0; i < jpg_f_cnt; i++) {
+					ESP_LOGI(TAG, "jpg file %d: %d", i,
+						 jpg_f_list[i]);
+				}
+			}
+
+			int max_jpg_number =
+				bsp_get_max_jpg_number(); // 获取最大的 jpg 文件编号
+
+			// 执行显示最大整数值对应的jpg文件
+			char jpg_file_path[64]; // 确保这个长度足够存储路径字符串
+			snprintf(jpg_file_path, sizeof(jpg_file_path),
+				 "%s/%d.jpg", SDCARD_MOUNT_POINT,
+				 max_jpg_number);
+
+			ESP_LOGI(TAG, "display jpg file: %s", jpg_file_path);
+			display_jpg_file(epd, jpg_file_path);
+		} else {
+			ESP_LOGI(TAG, "no jpg file found");
+			display_palette(epd);
+		}
+#endif
 
 	} else {
 		ESP_LOGE(TAG, "sdcard test failed");
 	}
-}
-
-void app_gpio_initial(void)
-{
-	gpio_config_t gpiocfg_out_lcd = {};
-	gpiocfg_out_lcd.intr_type = GPIO_INTR_DISABLE;
-	gpiocfg_out_lcd.mode = GPIO_MODE_OUTPUT;
-	gpiocfg_out_lcd.pin_bit_mask = (1ULL << PIN_SW3) | (1ULL << PIN_SW46);
-	gpiocfg_out_lcd.pull_down_en = GPIO_PULLDOWN_DISABLE;
-	gpiocfg_out_lcd.pull_up_en = GPIO_PULLUP_DISABLE;
-	gpio_config(&gpiocfg_out_lcd);
 }
 
 static esp_err_t save_qr_info(void)

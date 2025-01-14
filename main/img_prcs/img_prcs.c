@@ -344,6 +344,8 @@ esp_err_t display_jpg_file(YEPD *epd, const char *filename)
 	uint16_t w_img = 0;
 	uint16_t h_img = 0;
 
+	ESP_LOGI(TAG, "display jpg file: %s", filename);
+
 	show_ram_space("start of display_jpg_file");
 
 	// read jpg file to psram
@@ -410,6 +412,69 @@ esp_err_t display_jpg_file(YEPD *epd, const char *filename)
 	free(index_buffer);
 	free(palette); // 释放数组指针
 	show_ram_space("end of display_jpg_file");
+
+	return ret;
+}
+
+esp_err_t display_jpg_numble(YEPD *epd, int num)
+{
+	esp_err_t ret = ESP_OK;
+
+	char filename[64]; // 确保这个长度足够存储路径字符串
+	snprintf(filename, sizeof(filename), "%s/%d.jpg", SDCARD_MOUNT_POINT,
+		 num);
+
+	display_jpg_file(epd, filename);
+
+	return ret;
+}
+
+esp_err_t display_palette(YEPD *epd)
+{
+	const char *TAG = "display_palette";
+	esp_err_t ret = ESP_OK;
+
+	// 解析调色板
+	size_t color_count = 0;
+	uint8_t **palette = parse_palette(epd->palette, &color_count);
+	if (!palette) {
+		printf("Failed to parse palette.\n");
+		return 1;
+	}
+	printf("Parsed %zu colors:\n", color_count);
+	for (size_t i = 0; i < color_count; i++) {
+		printf("Color %zu: R=%d, G=%d, B=%d\n", i, palette[i][0],
+		       palette[i][1], palette[i][2]);
+	}
+
+	// 像素对调色板索引缓存
+	uint8_t *index_buffer =
+		heap_caps_malloc(epd->width * epd->height, MALLOC_CAP_SPIRAM);
+	if (index_buffer == NULL) {
+		ESP_LOGE(TAG, "index_buffer malloc fail");
+		return ESP_FAIL;
+	}
+	show_ram_space("after malloc index_buffer");
+
+	// 生成调色板索引
+	int segment_width = epd->width / color_count;
+	for (int y = 0; y < epd->height; y++) {
+		for (int x = 0; x < epd->width; x++) {
+			int segment = x / segment_width;
+			if (segment >= color_count) {
+				segment = color_count - 1;
+			}
+			index_buffer[y * epd->width + x] = segment;
+		}
+	}
+
+	epd->init();
+	epd->fill_index(index_buffer);
+	epd->update();
+
+	free(index_buffer);
+	free(palette); // 释放数组指针
+	show_ram_space("end of display_palette");
 
 	return ret;
 }

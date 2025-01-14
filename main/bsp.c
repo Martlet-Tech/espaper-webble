@@ -13,6 +13,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <dirent.h>
+#include <ctype.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "freertos/task.h"
@@ -29,12 +31,25 @@
 #include "esp_vfs_fat.h"
 #include "driver/sdmmc_host.h"
 #include "sdmmc_cmd.h"
+#include <esp_timer.h>
+
+#include "img_prcs.h"
 
 static const char *TAG = "file";
 
 sdmmc_card_t *card;
 
 YEPD *epd;
+
+#define MAX_FILES 100 // 假设最大图片数量为 100
+int image_numbers[MAX_FILES]; // 存储所有图片的编号
+int image_count = 0; // 图片数量
+int current_image_number = -1; // 当前图片编号
+
+// 函数声明
+void show_next_image(YEPD *epd);
+void show_prev_image(YEPD *epd);
+void delete_current_image();
 
 /* 打印文件列表 */
 void list_files(const char *base_path)
@@ -312,4 +327,281 @@ esp_err_t bsp_create_web_qr_str(char *str_buf)
 		IP2STR(&ip_info.ip), epd->width, epd->height);
 
 	return ESP_OK;
+}
+
+#if 1 // button
+// 定义回调函数
+void callback_1()
+{
+	printf("GPIO %d callback executed\n", GPIO_IO_NUM_1);
+	show_prev_image(epd);
+}
+void callback_2()
+{
+	printf("GPIO %d callback executed\n", GPIO_IO_NUM_2);
+	show_next_image(epd);
+}
+void callback_3()
+{
+	printf("GPIO %d callback executed\n", GPIO_IO_NUM_3);
+	delete_current_image(epd);
+}
+void callback_4()
+{
+	printf("GPIO %d callback executed\n", GPIO_IO_NUM_4);
+}
+
+// 定义 GPIO 和对应的定时器与回调函数的数组
+typedef struct {
+	int gpio_num;
+	esp_timer_handle_t timer_handle;
+	callback_t callback;
+} gpio_monitor_t;
+
+gpio_monitor_t gpio_monitor[GPIO_NUM] = { { GPIO_IO_NUM_1, NULL, callback_1 },
+					  { GPIO_IO_NUM_2, NULL, callback_2 },
+					  { GPIO_IO_NUM_3, NULL, callback_3 },
+					  { GPIO_IO_NUM_4, NULL, callback_4 } };
+
+// 定时器回调函数
+static void timer_callback(void *arg)
+{
+	gpio_monitor_t *monitor = (gpio_monitor_t *)arg;
+	int level = gpio_get_level(monitor->gpio_num);
+	if (level == 0) { // 确认引脚仍为低电平
+		monitor->callback();
+	}
+}
+
+// GPIO 中断服务
+static void IRAM_ATTR gpio_isr_handler(void *arg)
+{
+	gpio_monitor_t *monitor = (gpio_monitor_t *)arg;
+	int level = gpio_get_level(monitor->gpio_num);
+	if (level == 0) { // 检测到低电平
+		// 启动定时器
+		esp_timer_start_once(monitor->timer_handle,
+				     DEBOUNCE_TIME_MS * 1000);
+	}
+}
+
+void bsp_gpio_initial(void)
+{
+	gpio_config_t gpiocfg_out_lcd = {};
+	gpiocfg_out_lcd.intr_type = GPIO_INTR_DISABLE;
+	gpiocfg_out_lcd.mode = GPIO_MODE_OUTPUT;
+	gpiocfg_out_lcd.pin_bit_mask = (1ULL << PIN_SW3) | (1ULL << PIN_SW46);
+	gpiocfg_out_lcd.pull_down_en = GPIO_PULLDOWN_DISABLE;
+	gpiocfg_out_lcd.pull_up_en = GPIO_PULLUP_DISABLE;
+	gpio_config(&gpiocfg_out_lcd);
+
+	gpio_config_t io_conf = {
+		.intr_type = GPIO_INTR_NEGEDGE, // 检测下降沿
+		.mode = GPIO_MODE_INPUT, // 输入模式
+		.pin_bit_mask =
+			(1ULL << GPIO_IO_NUM_1) | (1ULL << GPIO_IO_NUM_2) |
+			(1ULL << GPIO_IO_NUM_3) | (1ULL << GPIO_IO_NUM_4),
+		.pull_down_en = GPIO_PULLDOWN_DISABLE,
+		.pull_up_en = GPIO_PULLUP_ENABLE, // 启用上拉
+	};
+	gpio_config(&io_conf);
+
+	// 创建定时器和中断服务
+	for (int i = 0; i < GPIO_NUM; i++) {
+		esp_timer_create_args_t timer_args = {
+			.callback = timer_callback,
+			.arg = &gpio_monitor[i],
+			.dispatch_method = ESP_TIMER_TASK,
+			.name = "gpio_timer"
+		};
+		esp_timer_create(&timer_args, &gpio_monitor[i].timer_handle);
+
+		gpio_isr_handler_add(gpio_monitor[i].gpio_num, gpio_isr_handler,
+				     &gpio_monitor[i]);
+	}
+}
+
+#endif
+
+// 返回图片数量
+int scan_and_sort_images()
+{
+	image_count = 0;
+	struct dirent *entry;
+	DIR *dir = opendir("/sdcard");
+	if (dir == NULL) {
+		printf("Failed to open directory.\n");
+		return -1;
+	}
+
+	while ((entry = readdir(dir)) != NULL) {
+		if (strstr(entry->d_name, ".jpg")) {
+			int num = atoi(entry->d_name); // 提取文件名中的整数部分
+			if (num > 0 && image_count < MAX_FILES) {
+				image_numbers[image_count++] = num;
+			}
+		}
+	}
+	closedir(dir);
+
+	// 排序图片编号
+	qsort(image_numbers, image_count, sizeof(int),
+	      (int (*)(const void *, const void *))strcmp);
+
+	return image_count;
+}
+
+int get_file_num_from_index(int index)
+{
+	if (index < 0 || index >= image_count) {
+		return -1;
+	}
+	return image_numbers[index];
+}
+
+int get_max_jpg_num(void)
+{
+	if (image_count == 0) {
+		return -1;
+	}
+	return image_numbers[image_count - 1];
+}
+
+int set_current_image_number(int num)
+{
+	if (num < 0) {
+		return -1;
+	}
+
+	current_image_number = num;
+	return 0;
+}
+
+void show_next_image(YEPD *epd)
+{
+	scan_and_sort_images();
+
+	if (image_count == 0) {
+		printf("No images to display.\n");
+		return;
+	}
+
+	for (int i = 0; i < image_count; i++) {
+		if (image_numbers[i] > current_image_number) {
+			current_image_number = image_numbers[i];
+			char filepath[64];
+			snprintf(filepath, sizeof(filepath), "/sdcard/%d.jpg",
+				 current_image_number);
+			printf("Displaying: %s\n", filepath);
+			display_jpg_numble(epd, current_image_number);
+			return;
+		}
+	}
+
+	// 如果超出范围，回到最小值
+	current_image_number = image_numbers[0];
+	char filepath[64];
+	snprintf(filepath, sizeof(filepath), "/sdcard/%d.jpg",
+		 current_image_number);
+	printf("Displaying: %s (looped to first)\n", filepath);
+	display_jpg_numble(epd, current_image_number);
+}
+
+void show_prev_image(YEPD *epd)
+{
+	scan_and_sort_images();
+
+	if (image_count == 0) {
+		printf("No images to display.\n");
+		return;
+	}
+
+	for (int i = image_count - 1; i >= 0; i--) {
+		if (image_numbers[i] < current_image_number) {
+			current_image_number = image_numbers[i];
+			char filepath[64];
+			snprintf(filepath, sizeof(filepath), "/sdcard/%d.jpg",
+				 current_image_number);
+			printf("Displaying: %s\n", filepath);
+			display_jpg_numble(epd, current_image_number);
+			return;
+		}
+	}
+
+	// 如果超出范围，回到最大值
+	current_image_number = image_numbers[image_count - 1];
+	char filepath[64];
+	snprintf(filepath, sizeof(filepath), "/sdcard/%d.jpg",
+		 current_image_number);
+	printf("Displaying: %s (looped to last)\n", filepath);
+	display_jpg_numble(epd, current_image_number);
+}
+
+void add_new_image(const char *new_image_path)
+{
+	scan_and_sort_images();
+
+	int new_number =
+		(image_count > 0) ? image_numbers[image_count - 1] + 1 : 1;
+	char new_filepath[64];
+	snprintf(new_filepath, sizeof(new_filepath), "/sdcard/%d.jpg",
+		 new_number);
+
+	// 假设 new_image_path 是上传文件的路径，进行文件拷贝
+	if (rename(new_image_path, new_filepath) == 0) {
+		printf("New image added: %s\n", new_filepath);
+	} else {
+		printf("Failed to add new image.\n");
+	}
+}
+
+void delete_current_image()
+{
+	if (current_image_number < 0) {
+		printf("No current image to delete.\n");
+		return;
+	}
+
+	char filepath[64];
+	snprintf(filepath, sizeof(filepath), "/sdcard/%d.jpg",
+		 current_image_number);
+	if (unlink(filepath) == 0) {
+		printf("Deleted image: %s\n", filepath);
+	} else {
+		printf("Failed to delete image: %s\n", filepath);
+		return;
+	}
+
+	// 删除后切换到编号更小的图片
+	scan_and_sort_images();
+
+	if (image_count == 0) {
+		// 如果没有图片剩余，重置为无效值
+		current_image_number = -1;
+		printf("No images left.\n");
+		// TODO: 显示调色板
+		display_palette(epd);
+		return;
+	}
+
+	// 找到比当前编号小的文件，或者回到第一个文件
+	for (int i = image_count - 1; i > 0; i--) {
+		if (image_numbers[i] < current_image_number) {
+			current_image_number = image_numbers[i];
+			char filepath_next[64];
+			snprintf(filepath_next, sizeof(filepath_next),
+				 "/sdcard/%d.jpg", current_image_number);
+			printf("Displaying: %s\n", filepath_next);
+			display_jpg_numble(epd, current_image_number);
+			return;
+		}
+	}
+
+	// 如果没有比当前编号更大的图片，循环到编号最小的文件
+	current_image_number = image_numbers[0];
+	char filepath_first[64];
+	snprintf(filepath_first, sizeof(filepath_first), "/sdcard/%d.jpg",
+		 current_image_number);
+	printf("Displaying: %s (looped to smallest)\n", filepath_first);
+	display_jpg_numble(epd, current_image_number);
 }

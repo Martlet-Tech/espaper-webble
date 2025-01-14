@@ -237,35 +237,24 @@ static esp_err_t upload_post_handler(httpd_req_t *req)
 	const char *resp_str = "{\"code\":200, \"msg\":\"Upload complete.\"}";
 	httpd_resp_send(req, resp_str, strlen(resp_str));
 
-	// 创建并打开文件
-	FILE *f = fopen(SDCARD_MOUNT_POINT "/request.bin", "wb+");
-	if (f == NULL) {
-		ESP_LOGE("SDMMC", "Failed to open file for writing");
-		sdcard_unmount();
-		goto upload_post_handler_error;
-	}
+	sdcard_save_buff((uint8_t *)(psram_buf->data), psram_buf->offset,
+			 SDCARD_MOUNT_POINT "/request.bin");
 
-	// 写入内容到文件
-	fwrite(psram_buf->data, sizeof(char), psram_buf->offset, f);
-	fclose(f);
+	int current_maxnum_jpg = scan_and_sort_images();
+	int new_img_num = get_file_num_from_index(current_maxnum_jpg - 1) + 1;
+	char jpg_file_path[64]; // 确保这个长度足够存储路径字符串
+	snprintf(jpg_file_path, sizeof(jpg_file_path), "%s/%d.jpg",
+		 SDCARD_MOUNT_POINT, new_img_num);
 
-	f = fopen(SDCARD_MOUNT_POINT "/upload.jpg", "wb+");
-	if (f == NULL) {
-		ESP_LOGE("SDMMC", "Failed to open file for writing");
-		sdcard_unmount();
-		goto upload_post_handler_error;
-	}
-
-	// 写入内容到文件
-	fwrite(psram_buf->data + offset_file_start, sizeof(char),
-	       offset_file_end - offset_file_start, f);
-	fclose(f);
+	sdcard_save_buff((uint8_t *)(psram_buf->data + offset_file_start),
+			 offset_file_end - offset_file_start, jpg_file_path);
+	set_current_image_number(new_img_num);
 
 	// 释放 PSRAM 缓存
 	free_psram_buffer(psram_buf);
 	strcpy(processing_stage, "decoding");
 
-	display_jpg_file(epd, SDCARD_MOUNT_POINT "/upload.jpg");
+	display_jpg_file(epd, jpg_file_path);
 
 	is_busy = false;
 	ESP_LOGI(TAG, "upload_post_handler return OK");

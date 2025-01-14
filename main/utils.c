@@ -61,3 +61,15 @@ void swap_pixels(unsigned char *a, unsigned char *b)
 	memcpy(a, b, 3);
 	memcpy(b, temp, 3);
 }
+
+// 获取数组中的最大整数
+int get_max_int_in_array(int *arr, int size)
+{
+	int max = arr[0];
+	for (int i = 1; i < size; i++) {
+		if (arr[i] > max) {
+			max = arr[i];
+		}
+	}
+	return max;
+}

@@ -22,4 +22,5 @@ void delayus(unsigned int delayTime);
 void delay_us(unsigned int delayTime);
 void safe_free(int **ptr);
 void swap_pixels(unsigned char *a, unsigned char *b);
+int get_max_int_in_array(int *arr, int size);
 #endif
