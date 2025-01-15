@@ -37,20 +37,6 @@ static void mac_to_str(const uint8_t *mac, char *mac_str)
 		 mac[2], mac[3], mac[4], mac[5]);
 }
 
-// 生成随机密码的函数
-static void generate_random_password(char *password, size_t length)
-{
-	char charset[] =
-		"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-	for (size_t i = 0; i < length; i++) {
-		int key = esp_random() % (sizeof(charset) - 1);
-		key = key;
-		//password[i] = charset[key];
-		password[i] = '0';
-	}
-	password[length] = '\0'; // 以空字符结尾
-}
-
 // Wi-Fi 事件处理回调
 static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 			       int32_t event_id, void *event_data)

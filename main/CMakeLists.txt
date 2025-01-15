@@ -2,7 +2,6 @@ idf_component_register(
 	SRCS 		"main.c"
 			"ugui/ugui.c"
 			"QRLib/qr_encode.c"
-			"int_link.c"
 			"utils.c"
 			"bsp.c"
 			"net/ap.c"
