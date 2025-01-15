@@ -10,9 +10,10 @@
  */
 
 #include "img_prcs.h"
-#include "system.h"
-#include "EL133UF1.h"
-#include "fs.h"
+#include "utils.h"
+#include "YMS16001200-1330AAX-E6.h"
+#include "bsp.h"
+#include <string.h>
 
 #include "esp_vfs_fat.h"
 #include "esp_log.h"
@@ -20,21 +21,16 @@
 #include "qr_encode.h"
 #include "esp_jpeg_dec.h"
 #include "esp_task_wdt.h"
+#include "esp_timer.h"
+#include <esp_netif.h>
+#include <esp_netif_types.h>
+#include "esp_wifi.h"
 
-#define PALETTE_SIZE 6
 const char *TAG = "IMG_PRCS";
 int display_debug = 0;
 char processing_stage[20] = "idle"; // 初始阶段;
 
-void stuckiDither(uint8_t *image, uint8_t *output_index, int image_width,
-		  int image_height);
-void atkinsonDither(uint8_t *image, uint8_t *output_index, int image_width,
-		    int image_height);
-
-void palette_index_to_E6_data(uint8_t *index_buffer, uint8_t *dst_m,
-			      uint8_t *dst_s);
-
-void draw_qrcode_on_ram(uint8_t *fb1);
+void draw_qrcode_on_ram(YEPD *epd, uint8_t *fb1);
 
 esp_err_t decode_jpg(uint8_t *inbuff, uint32_t insize, uint8_t *outbuff,
 		     uint32_t outsize, uint16_t *w, uint16_t *h)
@@ -90,121 +86,101 @@ esp_err_t decode_jpg(uint8_t *inbuff, uint32_t insize, uint8_t *outbuff,
 	return ESP_OK;
 }
 
-esp_err_t display_jpg_file(const char *filename)
+uint8_t **parse_palette(const char *palette_str, size_t *color_count)
 {
-	const char *TAG = "display_jpg_file";
-	esp_err_t ret = ESP_OK;
-
-	uint32_t DST_FRAME_SIZE = EPD_FRAME_SIZE;
-	uint8_t *jpg_file_buff = NULL;
-	uint8_t *rgb_buff = NULL;
-	uint8_t *index_buffer = NULL;
-	uint8_t *dst_image_buffer_m = NULL;
-	uint8_t *dst_image_buffer_s = NULL;
-
-	uint16_t w = EPD_WIDTH;
-	uint16_t h = EPD_HEIGHT;
-	uint16_t w_img = 0;
-	uint16_t h_img = 0;
-	uint32_t file_size;
-	uint32_t rgb_buff_size;
-
-	//ESP_LOGI(TAG, "start, file: %s", filename);
-	//show_ram_space("start of display_jpg_file");
-
-	// read jpg file to psram
-
-	jpg_file_buff = SD_MMC_ReadFileToPsram(filename, &file_size);
-	if (jpg_file_buff == NULL) {
-		return ESP_FAIL;
+	if (!palette_str || !color_count) {
+		return NULL; // 参数错误
 	}
-	//show_ram_space("after malloc jpg_file_buff");
 
-	rgb_buff_size = EPD_WIDTH * EPD_HEIGHT * 3;
-	rgb_buff =
-		(uint8_t *)heap_caps_malloc(rgb_buff_size, MALLOC_CAP_SPIRAM);
-	if (rgb_buff == NULL) {
-		ESP_LOGE(TAG, "rgb_buff malloc fail");
-		return ESP_FAIL;
+	// 初始化颜色计数
+	*color_count = 0;
+
+	// 预估调色板中的分号数量，计算大致的颜色数量
+	size_t estimated_colors = 1;
+	for (const char *p = palette_str; *p != '\0'; p++) {
+		if (*p == ';') {
+			estimated_colors++;
+		}
 	}
-	//show_ram_space("after malloc rgb_buff");
 
-	// decode jpg file to rgb ram
-
-	ESP_ERROR_CHECK(decode_jpg(jpg_file_buff, file_size, rgb_buff,
-				   rgb_buff_size, &w_img, &h_img));
-
-	free(jpg_file_buff);
-	show_ram_space("after free jpg_file_buff");
-
-	index_buffer = (uint8_t *)heap_caps_malloc(EPD_WIDTH * EPD_HEIGHT,
-						   MALLOC_CAP_SPIRAM);
-	if (index_buffer == NULL) {
-		ESP_LOGE(TAG, "index_buffer malloc fail");
-		return ESP_FAIL;
+	// 动态分配二维数组指针
+	uint8_t **palette =
+		(uint8_t **)malloc(estimated_colors * sizeof(uint8_t *));
+	if (!palette) {
+		return NULL; // 分配失败
 	}
-	//show_ram_space("after malloc index_buffer");
 
-	// process dither
+	const char *current = palette_str;
+	char *end_ptr;
 
-	//stuckiDither((uint8_t *)org_image_buffer, (uint8_t *)index_buffer, w, h);
-	atkinsonDither((uint8_t *)rgb_buff, (uint8_t *)index_buffer, w, h);
+	// 循环解析调色板字符串
+	while (*current != '\0') {
+		if (*color_count >= estimated_colors) {
+			// 空间不足，扩容
+			estimated_colors *= 2;
+			uint8_t **temp = (uint8_t **)realloc(
+				palette, estimated_colors * sizeof(uint8_t *));
+			if (!temp) {
+				for (size_t i = 0; i < *color_count; i++) {
+					free(palette[i]);
+				}
+				free(palette);
+				return NULL; // 扩容失败
+			}
+			palette = temp;
+		}
 
-	free(rgb_buff);
-	show_ram_space("after free rgb_buff");
+		// 为每个颜色分配 3 个字节的空间
+		palette[*color_count] = (uint8_t *)malloc(3 * sizeof(uint8_t));
+		if (!palette[*color_count]) {
+			for (size_t i = 0; i < *color_count; i++) {
+				free(palette[i]);
+			}
+			free(palette);
+			return NULL; // 分配失败
+		}
 
-	vTaskDelay(20 / portTICK_PERIOD_MS);
+		// 解析 R
+		int r = strtol(current, &end_ptr, 10);
+		if (*end_ptr != ',')
+			break; // 格式错误
+		current = end_ptr + 1;
 
-	// draw qr code
+		// 解析 G
+		int g = strtol(current, &end_ptr, 10);
+		if (*end_ptr != ',')
+			break; // 格式错误
+		current = end_ptr + 1;
 
-	draw_qrcode_on_ram(index_buffer);
+		// 解析 B
+		int b = strtol(current, &end_ptr, 10);
+		if (*end_ptr != ';' && *end_ptr != '\0')
+			break; // 格式错误
+		current = (*end_ptr == ';') ? end_ptr + 1 : end_ptr;
 
-	// make epd buff
-	dst_image_buffer_m =
-		(uint8_t *)heap_caps_malloc(DST_FRAME_SIZE, MALLOC_CAP_SPIRAM);
-	dst_image_buffer_s =
-		(uint8_t *)heap_caps_malloc(DST_FRAME_SIZE, MALLOC_CAP_SPIRAM);
-	palette_index_to_E6_data(index_buffer, dst_image_buffer_m,
-				 dst_image_buffer_s);
-	free(index_buffer);
-	show_ram_space("after free  index_buffer");
+		// 保存颜色
+		palette[*color_count][0] = (uint8_t)r;
+		palette[*color_count][1] = (uint8_t)g;
+		palette[*color_count][2] = (uint8_t)b;
 
-	ESP_LOGI(TAG, "取模完成");
+		(*color_count)++;
+	}
 
-	// update epd
+	// 调整内存到最终大小
+	uint8_t **final_palette = (uint8_t **)realloc(
+		palette, (*color_count) * sizeof(uint8_t *));
+	if (!final_palette && *color_count > 0) {
+		for (size_t i = 0; i < *color_count; i++) {
+			free(palette[i]);
+		}
+		free(palette);
+		return NULL; // 调整失败
+	}
 
-	EL133UF1_Init();
-	EL133UF1_DisplayFrame(dst_image_buffer_m, dst_image_buffer_s);
-	EL133UF1_Sleep();
-	EL133UF1_Deinit();
-
-	free(dst_image_buffer_m);
-	free(dst_image_buffer_s);
-	ESP_LOGI(TAG, "显示完成");
-	show_ram_space("end of display_jpg_file");
-
-	return ret;
+	return final_palette;
 }
 
-// 交换两个像素，大小为 3 字节 (RGB)
-void swap_pixels(unsigned char *a, unsigned char *b)
-{
-	unsigned char temp[3];
-	memcpy(temp, a, 3);
-	memcpy(a, b, 3);
-	memcpy(b, temp, 3);
-}
-
-const uint8_t palette[PALETTE_SIZE][3] = {
-	{ 0x00, 0x00, 0x00 }, //BLACK 0,index = 0
-	{ 0xFF, 0xFF, 0xFF }, //WHITE 1,index = 1
-	{ 0xFF, 0xFF, 0x00 }, //YELLOW 2,index = 2
-	{ 0xFF, 0x00, 0x00 }, //RED 3,index = 3
-	{ 0x00, 0x00, 0xFF }, //BLUE 4,index = 5
-	{ 0x00, 0xFF, 0x00 }, //GREEN 5,index = 6
-};
-
-uint8_t plus_truncate_uchar(uint8_t a, int b)
+uint8_t bounded_add_u8(uint8_t a, int b)
 {
 	if ((a & 0xff) + b < 0) {
 		return 0;
@@ -215,19 +191,18 @@ uint8_t plus_truncate_uchar(uint8_t a, int b)
 	}
 }
 
-uint8_t FindNearestColor(uint8_t *pixel_rgb)
+uint8_t find_nearest_color(uint8_t *pixel_rgb, uint8_t **palette,
+			   size_t palette_size)
 {
 	int minDistanceSquared = 255 * 255 + 255 * 255 + 255 * 255 + 1;
 	int bestIndex = 0;
-	for (int i = 0; i < PALETTE_SIZE; i++) {
-		int Rdiff = ((int)pixel_rgb[0] & 0xff) -
-			    ((int)palette[i][0] & 0xff);
-		int Gdiff = ((int)pixel_rgb[1] & 0xff) -
-			    ((int)palette[i][1] & 0xff);
-		int Bdiff = ((int)pixel_rgb[2] & 0xff) -
-			    ((int)palette[i][2] & 0xff);
+	for (size_t i = 0; i < palette_size; i++) {
+		int Rdiff = ((int)pixel_rgb[0]) - ((int)palette[i][0]);
+		int Gdiff = ((int)pixel_rgb[1]) - ((int)palette[i][1]);
+		int Bdiff = ((int)pixel_rgb[2]) - ((int)palette[i][2]);
 		int distanceSquared =
 			Rdiff * Rdiff + Gdiff * Gdiff + Bdiff * Bdiff;
+
 		if (distanceSquared < minDistanceSquared) {
 			minDistanceSquared = distanceSquared;
 			bestIndex = i;
@@ -236,248 +211,81 @@ uint8_t FindNearestColor(uint8_t *pixel_rgb)
 	return (uint8_t)bestIndex;
 }
 
-void stuckiDither(uint8_t *image, uint8_t *output_index, int image_width,
-		  int image_height)
-{
-	const char *TAG = "Dithering";
-	ESP_LOGI(TAG, "start");
-	for (int y = 0; y < image_height; y++) {
-		if (y % 10 == 0) { // 可以尝试让出 CPU 的频率，比如每 10 行
-			taskYIELD(); // 或者 vTaskDelay(1)
-		}
-
-		for (int x = 0; x < image_width; x++) {
-			//taskYIELD(); // 或者 vTaskDelay(1) 来让出 CPU
-
-			uint8_t *currentPixel =
-				image + (y * image_width + x) * 3;
-			uint8_t index = FindNearestColor(currentPixel);
-			output_index[y * image_width + x] = index;
-
-			for (int i = 0; i < 3; i++) { //RGB
-				//计算误差
-				int error = (currentPixel[i] & 0xff) -
-					    (palette[index][i] & 0xff);
-				//扩散误差
-				int pixel_offset = (y * image_width + x) * 3;
-				if (x + 1 < image_width) {
-					image[pixel_offset + 3 + i] =
-						plus_truncate_uchar(
-							image[pixel_offset + 3 +
-							      i],
-							(error * 8) / 42);
-				}
-				if (x + 2 < image_width) {
-					image[pixel_offset + 6 + i] =
-						plus_truncate_uchar(
-							image[pixel_offset + 6 +
-							      i],
-							(error * 4) / 42);
-				}
-				if (y + 1 < image_height) {
-					if (x - 2 > 0) {
-						image[pixel_offset +
-						      image_width * 3 - 6 + i] =
-							plus_truncate_uchar(
-								image[pixel_offset +
-								      image_width *
-									      3 -
-								      6 + i],
-								(error * 2) /
-									42);
-					}
-					if (x - 1 > 0) {
-						image[pixel_offset +
-						      image_width * 3 - 3 + i] =
-							plus_truncate_uchar(
-								image[pixel_offset +
-								      image_width *
-									      3 -
-								      3 + i],
-								(error * 4) /
-									42);
-					}
-					{ // x = x
-						image[pixel_offset +
-						      image_width * 3 + i] =
-							plus_truncate_uchar(
-								image[pixel_offset +
-								      image_width *
-									      3 +
-								      i],
-								(error * 8) /
-									42);
-					}
-					if (x + 1 < image_width) {
-						image[pixel_offset +
-						      image_width * 3 + 3 + i] =
-							plus_truncate_uchar(
-								image[pixel_offset +
-								      image_width *
-									      3 +
-								      3 + i],
-								(error * 4) /
-									42);
-					}
-					if (x + 2 < image_width) {
-						image[pixel_offset +
-						      image_width * 3 + 6 + i] =
-							plus_truncate_uchar(
-								image[pixel_offset +
-								      image_width *
-									      3 +
-								      6 + i],
-								(error * 2) /
-									42);
-					}
-				}
-				if (y + 2 < image_height) {
-					if (x - 2 > 0) {
-						image[pixel_offset +
-						      image_width * 6 - 6 + i] =
-							plus_truncate_uchar(
-								image[pixel_offset +
-								      image_width *
-									      6 -
-								      6 + i],
-								(error * 1) /
-									42);
-					}
-					if (x - 1 > 0) {
-						image[pixel_offset +
-						      image_width * 6 - 3 + i] =
-							plus_truncate_uchar(
-								image[pixel_offset +
-								      image_width *
-									      6 -
-								      3 + i],
-								(error * 2) /
-									42);
-					}
-					{ // x = x
-						image[pixel_offset +
-						      image_width * 6 + i] =
-							plus_truncate_uchar(
-								image[pixel_offset +
-								      image_width *
-									      6 +
-								      i],
-								(error * 4) /
-									42);
-					}
-					if (x + 1 < image_width) {
-						image[pixel_offset +
-						      image_width * 6 + 3 + i] =
-							plus_truncate_uchar(
-								image[pixel_offset +
-								      image_width *
-									      6 +
-								      3 + i],
-								(error * 2) /
-									42);
-					}
-					if (x + 2 < image_width) {
-						image[pixel_offset +
-						      image_width * 6 + 6 + i] =
-							plus_truncate_uchar(
-								image[pixel_offset +
-								      image_width *
-									      6 +
-								      6 + i],
-								(error * 1) /
-									42);
-					}
-				}
-			}
-		}
-	}
-
-	printf(".\r\n");
-}
-
-void atkinsonDither(uint8_t *image, uint8_t *output_index, int image_width,
-		    int image_height)
+void atkinson_dither(uint8_t *image, uint8_t *output_index, int image_width,
+		     int image_height, uint8_t **palette, size_t palette_size)
 {
 	ESP_LOGI(TAG, "dither start");
 
 	for (int y = 0; y < image_height; y++) {
-		if ((y % 80) == 0) { // 可以尝试让出 CPU 的频率，比如每 10 行
-			vTaskDelay(1); //taskYIELD(); // 或者 vTaskDelay(1)
+		if ((y % 200) == 0) {
+			vTaskDelay(1); // 可以尝试让出 CPU 的频率
 		}
 
 		for (int x = 0; x < image_width; x++) {
 			uint8_t *currentPixel =
 				image + (y * image_width + x) * 3;
-			uint8_t index = FindNearestColor(currentPixel);
+			uint8_t index = find_nearest_color(
+				currentPixel, palette, palette_size);
 			output_index[y * image_width + x] = index;
 
-			for (int i = 0; i < 3; i++) { //RGB
-				//计算误差
+			for (int i = 0; i < 3; i++) { // RGB
+				// 计算误差
 				int error = (currentPixel[i] & 0xff) -
 					    (palette[index][i] & 0xff);
-				//扩散误差
+				// 扩散误差
 				int pixel_offset = (y * image_width + x) * 3;
 				if (x + 1 < image_width) {
 					image[pixel_offset + 3 + i] =
-						plus_truncate_uchar(
+						bounded_add_u8(
 							image[pixel_offset + 3 +
 							      i],
-							(error * 1) / 8);
+							(error >> 3));
 				}
 				if (x + 2 < image_width) {
 					image[pixel_offset + 6 + i] =
-						plus_truncate_uchar(
+						bounded_add_u8(
 							image[pixel_offset + 6 +
 							      i],
-							(error * 1) / 8);
+							(error >> 3));
 				}
 				if (y + 1 < image_height) {
 					if (x - 1 > 0) {
 						image[pixel_offset +
 						      image_width * 3 - 3 + i] =
-							plus_truncate_uchar(
+							bounded_add_u8(
 								image[pixel_offset +
 								      image_width *
 									      3 -
 								      3 + i],
-								(error * 1) /
-									8);
+								(error >> 3));
 					}
-					{ // x = x
-						image[pixel_offset +
-						      image_width * 3 + i] =
-							plus_truncate_uchar(
-								image[pixel_offset +
-								      image_width *
-									      3 +
-								      i],
-								(error * 1) /
-									8);
-					}
+					image[pixel_offset + image_width * 3 +
+					      i] =
+						bounded_add_u8(
+							image[pixel_offset +
+							      image_width * 3 +
+							      i],
+							(error >> 3));
+
 					if (x + 1 < image_width) {
 						image[pixel_offset +
 						      image_width * 3 + 3 + i] =
-							plus_truncate_uchar(
+							bounded_add_u8(
 								image[pixel_offset +
 								      image_width *
 									      3 +
 								      3 + i],
-								(error * 1) /
-									8);
+								(error >> 3));
 					}
 				}
 				if (y + 2 < image_height) {
-					{ // x = x
-						image[pixel_offset +
-						      image_width * 6 + i] =
-							plus_truncate_uchar(
-								image[pixel_offset +
-								      image_width *
-									      6 +
-								      i],
-								(error * 1) /
-									8);
-					}
+					image[pixel_offset + image_width * 6 +
+					      i] =
+						bounded_add_u8(
+							image[pixel_offset +
+							      image_width * 6 +
+							      i],
+							(error >> 3));
 				}
 			}
 		}
@@ -523,6 +331,154 @@ void palette_index_to_E6_data(uint8_t *index_buffer, uint8_t *dst_m,
 	}
 }
 
+esp_err_t display_jpg_file(YEPD *epd, const char *filename)
+{
+	const char *TAG = "display_jpg_file";
+	esp_err_t ret = ESP_OK;
+
+	uint32_t file_size = 0;
+	uint8_t *jpg_file_buff = NULL;
+	uint8_t *rgb_buff = NULL;
+	uint32_t rgb_buff_size = epd->width * epd->height * 3;
+
+	uint16_t w_img = 0;
+	uint16_t h_img = 0;
+
+	ESP_LOGI(TAG, "display jpg file: %s", filename);
+
+	show_ram_space("start of display_jpg_file");
+
+	// read jpg file to psram
+	jpg_file_buff = SD_MMC_ReadFileToPsram(filename, &file_size);
+	if ((jpg_file_buff == NULL) || (file_size == 0)) {
+		ESP_LOGE(TAG, "read jpg file fail");
+		return ESP_FAIL;
+	}
+
+	// alloc rgb_buff
+	rgb_buff = heap_caps_malloc(rgb_buff_size, MALLOC_CAP_SPIRAM);
+	if (rgb_buff == NULL) {
+		ESP_LOGE(TAG, "rgb_buff malloc fail");
+		return ESP_FAIL;
+	}
+	show_ram_space("after malloc rgb_buff");
+
+	// decode jpg file to rgb_buff
+	ESP_ERROR_CHECK(decode_jpg(jpg_file_buff, file_size, rgb_buff,
+				   rgb_buff_size, &w_img, &h_img));
+
+	free(jpg_file_buff);
+	show_ram_space("after free jpg_file_buff");
+
+	// 解析调色板
+	size_t color_count = 0;
+	uint8_t **palette = parse_palette(epd->palette, &color_count);
+	if (!palette) {
+		printf("Failed to parse palette.\n");
+		return 1;
+	}
+	printf("Parsed %zu colors:\n", color_count);
+	for (size_t i = 0; i < color_count; i++) {
+		printf("Color %zu: R=%d, G=%d, B=%d\n", i, palette[i][0],
+		       palette[i][1], palette[i][2]);
+	}
+
+	// 像素对调色板索引缓存
+	uint8_t *index_buffer =
+		heap_caps_malloc(epd->width * epd->height, MALLOC_CAP_SPIRAM);
+	if (index_buffer == NULL) {
+		ESP_LOGE(TAG, "index_buffer malloc fail");
+		return ESP_FAIL;
+	}
+	show_ram_space("after malloc index_buffer");
+
+	// process dither
+	int64_t start_time = esp_timer_get_time();
+	atkinson_dither(rgb_buff, index_buffer, epd->width, epd->height,
+			palette, color_count);
+	int64_t end_time = esp_timer_get_time();
+	int64_t time_elapsed = end_time - start_time;
+	ESP_LOGI(TAG, "dither execution time: %lld us\n", time_elapsed);
+
+	show_ram_space("after dither, before free rgb_buff");
+
+	free(rgb_buff);
+	show_ram_space("after free rgb_buff");
+
+	epd->init();
+	epd->fill_index(index_buffer);
+	epd->update();
+
+	free(index_buffer);
+	free(palette); // 释放数组指针
+	show_ram_space("end of display_jpg_file");
+
+	return ret;
+}
+
+esp_err_t display_jpg_numble(YEPD *epd, int num)
+{
+	esp_err_t ret = ESP_OK;
+
+	char filename[64]; // 确保这个长度足够存储路径字符串
+	snprintf(filename, sizeof(filename), "%s/%d.jpg", SDCARD_MOUNT_POINT,
+		 num);
+
+	display_jpg_file(epd, filename);
+
+	return ret;
+}
+
+esp_err_t display_palette(YEPD *epd)
+{
+	const char *TAG = "display_palette";
+	esp_err_t ret = ESP_OK;
+
+	// 解析调色板
+	size_t color_count = 0;
+	uint8_t **palette = parse_palette(epd->palette, &color_count);
+	if (!palette) {
+		printf("Failed to parse palette.\n");
+		return 1;
+	}
+	printf("Parsed %zu colors:\n", color_count);
+	for (size_t i = 0; i < color_count; i++) {
+		printf("Color %zu: R=%d, G=%d, B=%d\n", i, palette[i][0],
+		       palette[i][1], palette[i][2]);
+	}
+
+	// 像素对调色板索引缓存
+	uint8_t *index_buffer =
+		heap_caps_malloc(epd->width * epd->height, MALLOC_CAP_SPIRAM);
+	if (index_buffer == NULL) {
+		ESP_LOGE(TAG, "index_buffer malloc fail");
+		return ESP_FAIL;
+	}
+	show_ram_space("after malloc index_buffer");
+
+	// 生成调色板索引
+	int segment_width = epd->width / color_count;
+	for (int y = 0; y < epd->height; y++) {
+		for (int x = 0; x < epd->width; x++) {
+			int segment = x / segment_width;
+			if (segment >= color_count) {
+				segment = color_count - 1;
+			}
+			index_buffer[y * epd->width + x] = segment;
+		}
+	}
+
+	epd->init();
+	epd->fill_index(index_buffer);
+	epd->update();
+
+	free(index_buffer);
+	free(palette); // 释放数组指针
+	show_ram_space("end of display_palette");
+
+	return ret;
+}
+
 void draw_px_ug_port(int16_t x, int16_t y, uint32_t color, void *fb)
 {
 	if (fb) {
@@ -531,31 +487,6 @@ void draw_px_ug_port(int16_t x, int16_t y, uint32_t color, void *fb)
 		ESP_LOGE("draw_px_ug_port", "fb not initial");
 	}
 
-	if (((y % 80) == 0) || ((x % 80) == 0)) {
-		vPortYield();
-	}
-}
-
-void draw_px_24bpp(int16_t x, int16_t y, uint32_t color, void *fb)
-{
-	if (fb) {
-		// Calculate the memory location of the pixel
-		uint8_t *pixel_addr = ((uint8_t *)fb) + (y * EPD_WIDTH + x) * 3;
-
-		// Extract the RGB components from the 24-bit color
-		uint8_t red = (color >> 16) & 0xFF;
-		uint8_t green = (color >> 8) & 0xFF;
-		uint8_t blue = color & 0xFF;
-
-		// Assign the RGB components to the framebuffer
-		pixel_addr[0] = red;
-		pixel_addr[1] = green;
-		pixel_addr[2] = blue;
-	} else {
-		ESP_LOGE("draw_px_ug_port_24bpp", "fb not initial");
-	}
-
-	// Yield periodically to avoid watchdog resets in long-running loops
 	if (((y % 80) == 0) || ((x % 80) == 0)) {
 		vPortYield();
 	}
@@ -593,47 +524,33 @@ void draw_qr_code(uint16_t x, uint16_t y, int width_t, int side,
 	}
 }
 
-void draw_qrcode_on_ram(uint8_t *fb1)
+void draw_qrcode_on_ram(YEPD *epd, uint8_t *fb1)
 {
 	if (display_debug == 0) {
 		return;
 	}
 
-	const size_t str_len = 128;
 	UG_GUI ug;
 	int qr_side = 0;
 
 	uint8_t *qrbits_buf =
 		heap_caps_malloc(QR_MAX_BITDATA, MALLOC_CAP_SPIRAM);
-	char *str_wifi = heap_caps_malloc(str_len, MALLOC_CAP_SPIRAM);
-	char *str_web = heap_caps_malloc(str_len, MALLOC_CAP_SPIRAM);
+	char str_wifi[128] = { 0 };
+	char str_web[128] = { 0 };
 
 	show_ram_space("draw_qrcode_on_ram after malloc 3 ram");
-	//memset(str_wifi, 0, str_len);
-	//memset(str_web, 0, str_len);
 
 	ESP_LOGI(TAG, "draw_qrcode_on_ram start");
 
 	UG_Init(&ug, draw_px_ug_port, EPD_WIDTH, EPD_HEIGHT, fb1);
-	UG_FillFrame(0, 1490, 1200 - 1, 1600 - 1, WHITE);
+	UG_FillFrame(0, epd->height - 110, epd->width - 1, epd->height - 1,
+		     WHITE);
 	UG_SetBackcolor(WHITE);
 	UG_SetForecolor(BLACK);
 	UG_FontSelect(&FONT_12X20);
 
 	// draw wifi qr
-	wifi_config_t wifi_config;
-	esp_err_t ret = esp_wifi_get_config(WIFI_IF_AP, &wifi_config);
-	if (ret == ESP_OK) {
-		ESP_LOGI(TAG, "AP SSID: %s,  Password: %s", wifi_config.ap.ssid,
-			 wifi_config.ap.password);
-	} else {
-		ESP_LOGE(TAG, "Failed to get AP config: %s\n",
-			 esp_err_to_name(ret));
-	}
-
-	sprintf(str_wifi, "WIFI:T:WPA;S:%s;P:%s;;", wifi_config.ap.ssid,
-		wifi_config.ap.password);
-
+	bsp_create_wifi_qr_str(str_wifi);
 	ESP_LOGI(TAG, "wifi string(%d): %s", strlen(str_wifi), str_wifi);
 
 	qr_side = qr_encode(QR_LEVEL_M, 0, str_wifi, strlen(str_wifi),
@@ -643,17 +560,7 @@ void draw_qrcode_on_ram(uint8_t *fb1)
 	draw_qr_code(20, 1500, 100, qr_side, qrbits_buf, fb1, draw_px_ug_port);
 
 	// draw webside qr
-	esp_netif_ip_info_t ip_info;
-	esp_netif_t *netif =
-		esp_netif_get_handle_from_ifkey("WIFI_AP_DEF"); // Station模式下
-
-	if (esp_netif_get_ip_info(netif, &ip_info) == ESP_OK) {
-		ESP_LOGI(TAG, "IP Address: " IPSTR "\n", IP2STR(&ip_info.ip));
-	} else {
-		ESP_LOGE(TAG, "Failed to get IP address\n");
-	}
-	sprintf(str_web, "http://" IPSTR "/?width=1200&height=1600",
-		IP2STR(&ip_info.ip));
+	bsp_create_web_qr_str(str_web);
 	ESP_LOGI(TAG, "web string(%d): %s", strlen(str_web), str_web);
 
 	qr_side =
@@ -665,8 +572,7 @@ void draw_qrcode_on_ram(uint8_t *fb1)
 
 	// put text
 	char text_wifi[256];
-	sprintf(text_wifi, "#1: Scan left to connect Wi-Fi <S:%s P:%s>",
-		wifi_config.ap.ssid, wifi_config.ap.password);
+	sprintf(text_wifi, "#1: Scan left to connect Wi-Fi: %s", str_wifi);
 	UG_PutString(120, 1500, text_wifi);
 
 	UG_PutString(120, 1525, "#2: Scan Right to connect to Website");
@@ -677,12 +583,10 @@ void draw_qrcode_on_ram(uint8_t *fb1)
 
 	UG_PutString(120, 1575, "#3: Select an image to upload to EPD");
 
-	free(str_wifi);
-	free(str_web);
 	free(qrbits_buf);
 }
 
-void draw_note(uint8_t *fb1)
+void draw_note(YEPD *epd, uint8_t *fb1)
 {
 	char note1[] =
 		"Use the phone's built-in camera to scan the QR code because most current mobile operating systems restrict third-party applications from controlling Wi-Fi settings directly.";
@@ -691,7 +595,8 @@ void draw_note(uint8_t *fb1)
 
 	UG_GUI ug;
 	UG_Init(&ug, draw_px_ug_port, EPD_WIDTH, EPD_HEIGHT, fb1);
-	UG_FillFrame(0, 1490, 1200 - 1, 1600 - 1, WHITE);
+	UG_FillFrame(0, epd->height - 110, epd->width - 1, epd->height - 1,
+		     WHITE);
 	UG_SetBackcolor(WHITE);
 	UG_SetForecolor(RED);
 	UG_FontSelect(&FONT_24X40);
@@ -700,7 +605,7 @@ void draw_note(uint8_t *fb1)
 	UG_PutString(50, 500, note2);
 }
 
-void show_start_screen(void)
+void show_start_screen(YEPD *epd)
 {
 	show_ram_space("show_start_screen begin");
 
@@ -713,6 +618,7 @@ void show_start_screen(void)
 
 	show_ram_space("show_start_screen after alloc");
 
+	// compatiable with color pallet
 	for (int y = 0; y < EPD_HEIGHT; y++) {
 		for (int x = 0; x < EPD_WIDTH; x++) {
 			// white
@@ -743,20 +649,72 @@ void show_start_screen(void)
 	}
 
 	//draw_note(fb1);
-	draw_qrcode_on_ram(fb1);
+	draw_qrcode_on_ram(epd, fb1);
 
 	// fb1 -> fb2
 	palette_index_to_E6_data(fb1, fbm, fbs);
 
 	// ppd send data, update
-	EL133UF1_Init();
-	EL133UF1_DisplayFrame(fbm, fbs);
-	EL133UF1_Sleep();
-	EL133UF1_Deinit();
+	//EL133UF1_Init();
+	//EL133UF1_DisplayFrame(fbm, fbs);
+	//EL133UF1_Deinit();
 
 	free(fbs);
 	free(fbm);
 	free(fb1);
 
 	show_ram_space("show_start_screen before exit");
+}
+
+jpeg_error_t esp_jpeg_encode_one_picture(uint32_t w, uint32_t h, uint8_t *inbuf,
+					 uint8_t *outbuf)
+{
+	// configure encoder
+	jpeg_enc_config_t jpeg_enc_cfg = DEFAULT_JPEG_ENC_CONFIG();
+	jpeg_enc_cfg.width = w;
+	jpeg_enc_cfg.height = h;
+	jpeg_enc_cfg.src_type = JPEG_PIXEL_FORMAT_RGB888;
+	jpeg_enc_cfg.subsampling = JPEG_SUBSAMPLE_420;
+	jpeg_enc_cfg.quality = 60;
+	jpeg_enc_cfg.rotate = JPEG_ROTATE_0D;
+	jpeg_enc_cfg.task_enable = false;
+	jpeg_enc_cfg.hfm_task_priority = 13;
+	jpeg_enc_cfg.hfm_task_core = 1;
+
+	jpeg_error_t ret = JPEG_ERR_OK;
+	//uint8_t *inbuf = test_rgb888_data;
+	int image_size = jpeg_enc_cfg.width * jpeg_enc_cfg.height * 3;
+	//uint8_t *outbuf = NULL;
+	//int outbuf_size = 1024;
+	int out_len = 0;
+	jpeg_enc_handle_t jpeg_enc = NULL;
+	FILE *out = NULL;
+
+	// open
+	ret = jpeg_enc_open(&jpeg_enc_cfg, &jpeg_enc);
+	if (ret != JPEG_ERR_OK) {
+		return ret;
+	}
+
+	// process
+	ret = jpeg_enc_process(jpeg_enc, inbuf, image_size, outbuf, 100 * 1024,
+			       &out_len);
+	if (ret != JPEG_ERR_OK) {
+		goto jpeg_example_exit;
+	}
+
+	out = fopen("/sdcard/qr_wifi.jpg", "wb+");
+	if (out == NULL) {
+		goto jpeg_example_exit;
+	}
+	fwrite(outbuf, 1, out_len, out);
+	fclose(out);
+
+jpeg_example_exit:
+	// close
+	jpeg_enc_close(jpeg_enc);
+	//if (outbuf) {
+	//	free(outbuf);
+	//}
+	return ret;
 }

@@ -13,6 +13,7 @@
 #define __EL133UF1_H__
 
 #include "esp_attr.h"
+#include "epd.h"
 
 #define BLACK 0x0
 #define WHITE 0x1
@@ -46,46 +47,33 @@
 #define NOT_FIRST_DATA_PACKET 0
 
 // Image buffer for sending image
-#define EPD_IMAGE_DATA_BUFFER \
-	480000 // MCU RAM Size (800*720/2) reserve for one driver IC
+// MCU RAM Size (800*720/2) reserve for one driver IC
+#define EPD_IMAGE_DATA_BUFFER 480000
 
-#endif // #ifndef __EL133UF1_H__
-
-// Display resolution
 #define EPD_WIDTH 1200
 #define EPD_HEIGHT 1600
+
 // EL133UF1，有两个CS(Frame)每个字节包含两个像素，每个像素4bit
 #define EPD_IMAGE_SIZE (EPD_WIDTH * EPD_HEIGHT / 2) // 960,000
 #define EPD_FRAME_SIZE (EPD_IMAGE_SIZE / 2) // 480,000
 
-#ifdef __EL133UF1_C__
-#define __EL133UF1_EXTERN__ EXT_RAM_BSS_ATTR
-#else
-#define __EL133UF1_EXTERN__ extern
-#endif
+extern unsigned char epdImageDataBuffer[EPD_IMAGE_DATA_BUFFER];
 
-__EL133UF1_EXTERN__ unsigned char epdImageDataBuffer[EPD_IMAGE_DATA_BUFFER];
-
-void epdHardwareReset(void);
 void setPinCsAll(unsigned int setLevel);
 void setPinCs(unsigned char csNumber, unsigned int setLevel);
 void checkBusyHigh(void);
 void checkBusyLow(void);
-void EL133UF1_Init(void);
-void writeEpd(unsigned char epdCommand, unsigned char *epdData,
-	      unsigned int epdDataLength);
-void readEpd(unsigned char epdCommand, unsigned char *epdData,
-	     unsigned int epdDataLength);
-void writeEpdCommand(unsigned char epdCommand);
-void writeEpdData(unsigned char *epdData, unsigned int epdDataLength);
-void epdDisplay(void);
-void epdDisplayColor(unsigned char colorSelect);
-void epdDisplayColorBar(void);
-void writeEpdImage(unsigned char csx, unsigned char const *imageData,
-		   unsigned long imageDataLength);
+
 void EL133UF1_DisplayFrame(const unsigned char *frame_buffer_m,
 			   const unsigned char *frame_buffer_s);
 void EL133UF1_DisplayColor(unsigned char color, unsigned char *frame_buffer_m,
 			   unsigned char *frame_buffer_s);
 void EL133UF1_Sleep(void);
 int EL133UF1_Deinit(void);
+
+int EL133UF1_new_init(void);
+int EL133UF1_new_fill_fb(uint8_t *rgb_buff);
+int EL133UF1_new_update(void);
+int EL133UF1_new_fill_index(uint8_t *index_buff);
+
+#endif // #ifndef __EL133UF1_H__

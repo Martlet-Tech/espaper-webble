@@ -17,7 +17,6 @@
 
 #define CHUNK_SIZE 4096 * 2
 
-void delayms(unsigned int delayTime);
 unsigned char spiTransmitCommand(unsigned char commandBuf);
 unsigned char spiTransmitData(unsigned char *dataBuffer,
 			      unsigned long dataLength);
@@ -39,9 +38,5 @@ unsigned char getGpioLevel(unsigned char pinNumber);
 
 void EPD_IO_WriteDataBytes(const unsigned char *bytes, unsigned int length);
 void EPD_IO_Write_byte(const unsigned char data);
-void EPD_IO_WriteCommandData_2CH(const unsigned char cmd,
-				 const unsigned char *data,
-				 unsigned int data_length,
-				 unsigned int cs_mask);
 
 #endif // #ifndef __COMM_H__

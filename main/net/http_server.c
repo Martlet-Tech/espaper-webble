@@ -18,14 +18,16 @@
 #include "esp_http_server.h"
 #include "esp_vfs_fat.h"
 #include "sdmmc_cmd.h"
-#include "fs.h"
-#include "system.h"
+#include "bsp.h"
+#include "utils.h"
 #include "img_prcs.h"
-#include "esp_timer.h"
 #include "esp_event.h"
+#include "epd.h"
 
 #define BUFFER_SIZE 1024
 #define MAX_FILE_SIZE (4 * 1024 * 1024) // 假设文件大小最大为 2MB
+
+extern YEPD *epd;
 
 typedef struct {
 	char *data; // 用于存储文件数据的 PSRAM 缓存
@@ -41,40 +43,6 @@ static size_t html_cache_size = 0; // 缓存的大小
 bool is_busy = false;
 
 extern char processing_stage[];
-
-// 初始化 PSRAM 缓存
-static psram_buffer_t *init_psram_buffer(size_t size)
-{
-	psram_buffer_t *buffer = malloc(sizeof(psram_buffer_t));
-	if (!buffer) {
-		ESP_LOGE(TAG, "Failed to allocate memory for buffer structure");
-		return NULL;
-	}
-
-	// 分配 PSRAM 缓存
-	buffer->data = heap_caps_malloc(size, MALLOC_CAP_SPIRAM);
-	if (!buffer->data) {
-		ESP_LOGE(TAG, "Failed to allocate PSRAM buffer");
-		free(buffer);
-		return NULL;
-	}
-
-	buffer->size = size;
-	buffer->offset = 0;
-
-	return buffer;
-}
-
-// 释放 PSRAM 缓存
-static void free_psram_buffer(psram_buffer_t *buffer)
-{
-	if (buffer) {
-		if (buffer->data) {
-			heap_caps_free(buffer->data);
-		}
-		free(buffer);
-	}
-}
 
 static int find_jpeg_start(const unsigned char *data, size_t data_len)
 {
@@ -143,7 +111,6 @@ static esp_err_t index_get_handler(httpd_req_t *req)
 static esp_err_t upload_post_handler(httpd_req_t *req)
 {
 	if (is_busy) {
-		// 服务器忙碌，返回错误信息
 		ESP_LOGI(TAG, "Server busy");
 		httpd_resp_set_type(req, "application/json");
 		const char *busy_resp =
@@ -157,6 +124,7 @@ static esp_err_t upload_post_handler(httpd_req_t *req)
 
 	char buf[BUFFER_SIZE];
 	int received;
+	size_t offset = 0;
 	size_t remaining_size = MAX_FILE_SIZE;
 
 	ESP_LOGI(TAG, "httpd_req_t *req->method= %d", req->method);
@@ -165,10 +133,11 @@ static esp_err_t upload_post_handler(httpd_req_t *req)
 
 	strcpy(processing_stage, "saving");
 
-	// 初始化 PSRAM 缓存
-	psram_buffer_t *psram_buf = init_psram_buffer(MAX_FILE_SIZE);
-	if (!psram_buf) {
-		return ESP_FAIL;
+	// 分配 PSRAM 缓存
+	char *psram_data = heap_caps_malloc(MAX_FILE_SIZE, MALLOC_CAP_SPIRAM);
+	if (!psram_data) {
+		ESP_LOGE(TAG, "Failed to allocate PSRAM buffer");
+		goto upload_post_handler_error;
 	}
 
 	ESP_LOGI(TAG, "Receiving file and storing to PSRAM...");
@@ -176,16 +145,16 @@ static esp_err_t upload_post_handler(httpd_req_t *req)
 	// 循环接收并存储到 PSRAM
 	while ((received = httpd_req_recv(req, buf, sizeof(buf))) > 0) {
 		// 检查剩余空间是否足够
-		if (psram_buf->offset + received > psram_buf->size) {
+		if (offset + received > MAX_FILE_SIZE) {
 			ESP_LOGE(TAG,
 				 "Not enough PSRAM space to store the file");
-			free_psram_buffer(psram_buf);
+			heap_caps_free(psram_data);
 			return ESP_FAIL;
 		}
 
 		// 将接收到的数据拷贝到 PSRAM 中
-		memcpy(psram_buf->data + psram_buf->offset, buf, received);
-		psram_buf->offset += received;
+		memcpy(psram_data + offset, buf, received);
+		offset += received;
 		remaining_size -= received;
 
 		printf(".");
@@ -195,26 +164,24 @@ static esp_err_t upload_post_handler(httpd_req_t *req)
 
 	if (received < 0) {
 		ESP_LOGE(TAG, "File upload failed");
-		free_psram_buffer(psram_buf);
-		return ESP_FAIL;
+		goto upload_post_handler_error;
 	}
 
 	// find file start
 	ptrdiff_t offset_file_start =
-		find_jpeg_start((const unsigned char *)(psram_buf->data), 1024);
+		find_jpeg_start((const unsigned char *)(psram_data), 1024);
 
 	const void *pos = NULL;
 
 	// find file ends
 	const char *end_string = "------WebKitFormBoundary";
-	size_t search_size = req->content_len > 1024 ?
-				     1024 :
-				     req->content_len; // Adjust search size
+	// Adjust search size
+	size_t search_size = req->content_len > 1024 ? 1024 : req->content_len;
 
-	pos = memmem(psram_buf->data + req->content_len - search_size,
-		     search_size, end_string, strlen(end_string));
+	pos = memmem(psram_data + req->content_len - search_size, search_size,
+		     end_string, strlen(end_string));
 	ptrdiff_t offset_file_end = (const unsigned char *)pos -
-				    (const unsigned char *)(psram_buf->data);
+				    (const unsigned char *)(psram_data);
 	offset_file_end -= 2;
 	ESP_LOGI(TAG, "File offset = %d", (int)offset_file_end);
 
@@ -226,55 +193,44 @@ static esp_err_t upload_post_handler(httpd_req_t *req)
 			"{\"code\":500, \"msg\":\"Upload data parse fail.\"}";
 		httpd_resp_send(req, resp_str, strlen(resp_str));
 
-		return ESP_FAIL;
+		goto upload_post_handler_error;
 	}
 
-	ESP_LOGI(TAG, "File upload successful, total size: %zu bytes",
-		 psram_buf->offset);
+	ESP_LOGI(TAG, "File upload successful, total size: %zu bytes", offset);
 
 	// Send success response in JSON format
 	httpd_resp_set_type(req, "application/json");
 	const char *resp_str = "{\"code\":200, \"msg\":\"Upload complete.\"}";
 	httpd_resp_send(req, resp_str, strlen(resp_str));
 
-	// 创建并打开文件
-	FILE *f = fopen(SDCARD_MOUNT_POINT "/request.bin", "wb+");
-	if (f == NULL) {
-		ESP_LOGE("SDMMC", "Failed to open file for writing");
-		sdcard_unmount();
-		return ESP_FAIL;
-	}
+	sdcard_save_buff((uint8_t *)(psram_data), offset,
+			 SDCARD_MOUNT_POINT "/request.bin");
 
-	// 写入内容到文件
-	fwrite(psram_buf->data, sizeof(char), psram_buf->offset, f);
-	fclose(f);
+	int current_maxnum_jpg = scan_and_sort_images();
+	int new_img_num = get_file_num_from_index(current_maxnum_jpg - 1) + 1;
+	char jpg_file_path[64]; // 确保这个长度足够存储路径字符串
+	snprintf(jpg_file_path, sizeof(jpg_file_path), "%s/%d.jpg",
+		 SDCARD_MOUNT_POINT, new_img_num);
 
-	f = fopen(SDCARD_MOUNT_POINT "/upload.jpg", "wb+");
-	if (f == NULL) {
-		ESP_LOGE("SDMMC", "Failed to open file for writing");
-		sdcard_unmount();
-		return ESP_FAIL;
-	}
-
-	// 写入内容到文件
-	fwrite(psram_buf->data + offset_file_start, sizeof(char),
-	       offset_file_end - offset_file_start, f);
-	fclose(f);
+	sdcard_save_buff((uint8_t *)(psram_data + offset_file_start),
+			 offset_file_end - offset_file_start, jpg_file_path);
+	set_current_image_number(new_img_num);
 
 	// 释放 PSRAM 缓存
-	free_psram_buffer(psram_buf);
+	free(psram_data);
 	strcpy(processing_stage, "decoding");
 
-	int64_t start_time = esp_timer_get_time();
-	display_jpg_file(SDCARD_MOUNT_POINT "/upload.jpg");
-	int64_t end_time = esp_timer_get_time();
-	int64_t time_elapsed = end_time - start_time;
-	ESP_LOGI(TAG, "display_jpg_file execution time: %lld us\n",
-		 time_elapsed);
+	display_jpg_file(epd, jpg_file_path);
 
 	is_busy = false;
-
+	ESP_LOGI(TAG, "upload_post_handler return OK");
 	return ESP_OK;
+
+upload_post_handler_error:
+	is_busy = false;
+	if (psram_data)
+		heap_caps_free(psram_data);
+	return ESP_FAIL;
 }
 
 static esp_err_t favicon_get_handler(httpd_req_t *req)
@@ -313,6 +269,19 @@ static esp_err_t lang_handler(httpd_req_t *req)
 	fclose(file);
 	httpd_resp_send_chunk(req, NULL, 0); // 结束块发送
 	return ESP_OK;
+}
+
+static esp_err_t device_info_handler(httpd_req_t *req)
+{
+	// 动态生成 JSON 数据
+	char response[128];
+	snprintf(response, sizeof(response),
+		 "{\"name\":\"%s\", \"width\":\"%d\", \"height\":\"%d\"}",
+		 epd->name, epd->width, epd->height);
+
+	// 设置响应头
+	httpd_resp_set_type(req, "application/json");
+	return httpd_resp_send(req, response, HTTPD_RESP_USE_STRLEN);
 }
 
 // 启动 HTTP 服务器
@@ -366,6 +335,11 @@ void start_http_server()
 			.user_ctx = (void *)"/spiffs/lang_kr.json"
 		};
 
+		httpd_uri_t device_info = { .uri = "/device_info",
+					    .method = HTTP_GET,
+					    .handler = device_info_handler,
+					    .user_ctx = NULL };
+
 		httpd_register_uri_handler(server, &index_uri);
 		httpd_register_uri_handler(server, &upload_uri);
 		httpd_register_uri_handler(server, &favicon_uri);
@@ -373,5 +347,6 @@ void start_http_server()
 		httpd_register_uri_handler(server, &lang_zh_uri);
 		httpd_register_uri_handler(server, &lang_en_uri);
 		httpd_register_uri_handler(server, &lang_kr_uri);
+		httpd_register_uri_handler(server, &device_info);
 	}
 }

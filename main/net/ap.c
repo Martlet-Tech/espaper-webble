@@ -87,7 +87,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 }
 
 // 启动 Wi-Fi AP 模式的函数
-void wifi_init_softap()
+void start_wifi_soft_ap()
 {
 	esp_netif_init();
 	esp_event_loop_create_default();
