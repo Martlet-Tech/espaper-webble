@@ -15,6 +15,8 @@
 #define GPIO_LOW 0
 #define GPIO_HIGH 1
 
+#include <stddef.h>
+
 void show_ram_space(const char *position_string);
 void delayms(unsigned int delayTime);
 void delay_ms(unsigned int delayTime);

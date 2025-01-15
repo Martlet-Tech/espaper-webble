@@ -15,6 +15,7 @@
 #include "freertos/FreeRTOS.h"
 #include "esp_rom_sys.h"
 #include <string.h>
+#include "esp_random.h"
 
 void show_ram_space(const char *position_string)
 {
