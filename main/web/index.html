@@ -313,17 +313,18 @@
       <option value="kr">한국어</option>
     </select>
 
-    <select id="device_selector">
-      <option value="-1">请选择</option>
-    </select>
-
-    <!-- <h1 id="title"></h1>
-    <p id="description"></p> -->
+    <h3 id="device_name">Loading...</h3>
+    <h5 id="device_res">Loading...</h5>
 
     <div class="image-preview"></div>
 
     <label for="upload" class="upload-button" id="upload-label">Select Image to Upload</label>
     <input id="upload" type="file" accept="image/png,image/jpeg,image/bmp" />
+
+    <br />
+    <a href="https://www.yes-lcd.com/">www.yes-lcd.com</a>
+    <br />
+    <a href="#" onclick="addToFavorites()">Add YES-LCD to Favorites</a>
 
     <!-- 提示信息蒙层，初始时隐藏 -->
     <div id="overlay" style="
@@ -350,18 +351,6 @@
     </div>
   </div>
 
-  <div style="
-        position: absolute;
-        bottom: 0;
-        width: 100%;
-        text-align: center;
-        margin-bottom: 15px;
-      ">
-    <a href="https://www.yes-lcd.com/">www.yes-lcd.com</a>
-    <br />
-    <a href="#" onclick="addToFavorites()">Add YES-LCD to Favorites</a>
-  </div>
-
   <!-- <button id="update">组件更新</button> -->
 
   <script>
@@ -379,13 +368,14 @@
     let msg_upload_success = '';
     let msg_upload_fail = '';
     let msg_server_error = '';
+    let device_name = '';
+    let device_width = 0;
+    let device_height = 0;
 
     const loadLanguage = (lang) => {
       fetch(`/lang_${lang}.json`)
         .then((response) => response.json())
         .then((data) => {
-          //document.getElementById("title").textContent = data.title;
-          //document.getElementById("description").textContent = data.description;
           document.getElementById("upload-label").innerHTML = data.upload_label;
           msg_upload_success = data.msg_upload_success;
           msg_upload_fail = data.msg_upload_fail;
@@ -421,8 +411,6 @@
 
     var previewContainer = document.querySelector(".image-preview");
 
-    var queryParams = getQueryParams();
-
     //上传图片
     var $upload = document.querySelector("#upload");
     $upload.addEventListener("change", function (evt) {
@@ -432,8 +420,10 @@
           simpleCrop = new SimpleCrop({
             src: URL.createObjectURL(files[0]),
             size: {
-              width: queryParams.width,
-              height: queryParams.height,
+              //width: queryParams.width,
+              //height: queryParams.height,
+              width: device_width,
+              height: device_height,
             },
             cropSizePercent: 0.8,
             cropCallback: function ($resultCanvas) {
@@ -466,7 +456,6 @@
     });
 
     function submit(canvas) {
-      const queryParams = getQueryParams();
       // 指定导出的图片类型和质量
       var type = "image/jpeg";
       var quality = 0.8; // 0 到 1 之间的值，控制JPEG图片的质量
@@ -489,16 +478,10 @@
           formData.append("timestamp", uploadTimestamp);
           formData.append("systemInfo", systemInfo);
           formData.append("file", new File([blob], "upload.jpg", { type: "image/jpeg" }));
-          //formData.append("deviceId", queryParams.deviceId);
-          //formData.append("labelMacList", macList);
 
           // 使用XMLHttpRequest或fetch API上传图片
           var xhr = new XMLHttpRequest();
-          xhr.open(
-            "POST",
-            "/upload"
-            //"http://iot.seekink.cn:8090/cloud/prod-api/api/v1/label/scanCodeBrushPic"
-          );
+          xhr.open("POST", "/upload");
           xhr.setRequestHeader("Accept-Language", "en");
 
           xhr.onload = function () {
@@ -506,7 +489,7 @@
               try {
                 let data = JSON.parse(xhr.response);
                 if (data.code === 200) {
-                  showToast(msg_upload_success, "success"); // 显示成功提示
+                  showToast(msg_upload_success, "success");
                 } else {
                   showToast(msg_upload_fail, "error");
                 }
@@ -519,26 +502,13 @@
           };
 
           xhr.onerror = function () {
-            showToast(msg_upload_fail, "error"); // 显示失败提示
+            showToast(msg_upload_fail, "error");
           };
           xhr.send(formData);
         },
         type,
         quality
       );
-    }
-
-    function getQueryParams() {
-      const params = {};
-      const queryString = window.location.search.substring(1); // 获取查询字符串并去掉'?'
-      const pairs = queryString.split("&");
-
-      pairs.forEach((pair) => {
-        const [key, value] = pair.split("=");
-        if (key) params[key] = decodeURIComponent(value);
-      });
-
-      return params;
     }
 
     // 自定义提示函数
@@ -568,28 +538,30 @@
       const toast = document.getElementById("toast");
       const overlay = document.getElementById("overlay");
 
-      // 隐藏提示和蒙层
       if (toast.style.display === "block" || overlay.style.display === "block") {
         toast.style.display = "none";
         overlay.style.display = "none";
       }
     }
 
-    //组件更新
-    /*var $update = document.querySelector("#update");
-    $update.addEventListener("click", function () {
-      simpleCrop.updateBox({
-        cropSizePercent: 0.7,
-        size: {
-          width: 600,
-          height: 600,
-        },
-      });
-      simpleCrop.initBoxBorder({
-        borderColor: "#0BFF00",
-      });
-      simpleCrop.show();
-    });*/
+    async function updateDeviceInfo() {
+      try {
+        const response = await fetch('/device_info');
+        const data = await response.json();
+
+        device_name = data.name;
+        device_width = data.width;
+        device_height = data.height;
+
+        document.getElementById('device_name').textContent = data.name;
+        document.getElementById('device_res').textContent = `${data.width} x ${data.height}`;
+      } catch (error) {
+        console.error('Error fetching device info:', error);
+      }
+    }
+
+    window.onload = updateDeviceInfo;
+
   </script>
 
   <script>
