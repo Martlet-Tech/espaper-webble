@@ -104,35 +104,6 @@ void app_main(void)
 			ESP_LOGI(TAG, "jpg_list is not NULL");
 			display_jpg_numble(epd, biggest_file_num);
 		}
-#if 0
-		int *jpg_f_list = NULL;
-		int jpg_f_cnt = bsp_get_jpg_count();
-		ESP_LOGI(TAG, "jpg file count: %d", jpg_f_cnt);
-		if (jpg_f_cnt > 0) {
-			jpg_f_list = bsp_get_jpg_numbers(&jpg_f_cnt);
-			if (jpg_f_list) {
-				for (int i = 0; i < jpg_f_cnt; i++) {
-					ESP_LOGI(TAG, "jpg file %d: %d", i,
-						 jpg_f_list[i]);
-				}
-			}
-
-			int max_jpg_number =
-				bsp_get_max_jpg_number(); // 获取最大的 jpg 文件编号
-
-			// 执行显示最大整数值对应的jpg文件
-			char jpg_file_path[64]; // 确保这个长度足够存储路径字符串
-			snprintf(jpg_file_path, sizeof(jpg_file_path),
-				 "%s/%d.jpg", SDCARD_MOUNT_POINT,
-				 max_jpg_number);
-
-			ESP_LOGI(TAG, "display jpg file: %s", jpg_file_path);
-			display_jpg_file(epd, jpg_file_path);
-		} else {
-			ESP_LOGI(TAG, "no jpg file found");
-			display_palette(epd);
-		}
-#endif
 
 	} else {
 		ESP_LOGE(TAG, "sdcard test failed");
