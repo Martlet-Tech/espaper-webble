@@ -62,6 +62,8 @@ esp_err_t decode_jpg(uint8_t *inbuff, uint32_t insize, uint8_t *outbuff,
 		ESP_LOGE(TAG, "jpeg_dec_parse_header: %d", jd_ret);
 		return ESP_FAIL;
 	}
+	*w = jd_header_info.width;
+	*h = jd_header_info.height;
 	ESP_LOGI(TAG, "jpeg_dec_parse_header %d, w:%d h:%d", jd_ret,
 		 jd_header_info.width, jd_header_info.height);
 
@@ -344,7 +346,7 @@ esp_err_t display_jpg_file(YEPD *epd, const char *filename)
 	uint16_t w_img = 0;
 	uint16_t h_img = 0;
 
-	ESP_LOGI(TAG, "display jpg file: %s", filename);
+	ESP_LOGW(TAG, "display jpg file: %s", filename);
 
 	show_ram_space("start of display_jpg_file");
 
@@ -366,6 +368,13 @@ esp_err_t display_jpg_file(YEPD *epd, const char *filename)
 	// decode jpg file to rgb_buff
 	ESP_ERROR_CHECK(decode_jpg(jpg_file_buff, file_size, rgb_buff,
 				   rgb_buff_size, &w_img, &h_img));
+
+	if ((w_img != epd->width) || (h_img != epd->height)) {
+		ESP_LOGE(TAG, "image error w:%d h:%d", w_img, h_img);
+		free(jpg_file_buff);
+		free(rgb_buff);
+		return ESP_FAIL;
+	}
 
 	free(jpg_file_buff);
 	show_ram_space("after free jpg_file_buff");

@@ -212,6 +212,8 @@ static esp_err_t upload_post_handler(httpd_req_t *req)
 	snprintf(jpg_file_path, sizeof(jpg_file_path), "%s/%d.jpg",
 		 SDCARD_MOUNT_POINT, new_img_num);
 
+	ESP_LOGW(TAG, "image save as %s", jpg_file_path);
+
 	sdcard_save_buff((uint8_t *)(psram_data + offset_file_start),
 			 offset_file_end - offset_file_start, jpg_file_path);
 	set_current_image_number(new_img_num);

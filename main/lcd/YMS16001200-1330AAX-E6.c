@@ -43,26 +43,27 @@
 #define GPIO_LOW 0
 #define GPIO_HIGH 1
 
+#define AN_TM 0x74
+#define CMD66 0xF0
 #define PSR 0x00
-#define PWR 0x01
-#define POF 0x02
-#define PON 0x04
-#define BTST_N 0x05
-#define BTST_P 0x06
-#define DTM 0x10
-#define DRF 0x12
 #define CDI 0x50
 #define TCON 0x60
-#define TRES 0x61
-#define AN_TM 0x74
 #define AGID 0x86
+#define PWS 0xE3
+#define CCSET 0xE0
+#define TRES 0x61
+#define PWR 0x01
+#define EN_BUF 0xB6
+#define BTST_P 0x06
+#define BOOST_VDDP_EN 0xB7
+#define BTST_N 0x05
 #define BUCK_BOOST_VDDN 0xB0
 #define TFT_VCOM_POWER 0xB1
-#define EN_BUF 0xB6
-#define BOOST_VDDP_EN 0xB7
-#define CCSET 0xE0
-#define PWS 0xE3
-#define CMD66 0xF0
+
+#define DRF 0x12
+#define POF 0x02
+#define PON 0x04
+#define DTM 0x10
 
 #define FIRST_DATA_PACKET 1
 #define NOT_FIRST_DATA_PACKET 0
@@ -94,29 +95,27 @@ int EL133UF1_Deinit(void);
 
 const unsigned char spiCsPin[2] = { PIN_CS_M, PIN_CS_S };
 
-const unsigned char PSR_V[2] = { 0xDF,
-				 0x69 }; // 0x09 -> 0x69 20240319 V1 update.
-const unsigned char PWR_V[6] = { 0x0F, 0x00, 0x28, 0x2C, 0x28, 0x38 };
-const unsigned char POF_V[1] = { 0x00 };
-const unsigned char DRF_V[1] = { 0x00 };
-const unsigned char CDI_V[1] = { 0xF7 };
-const unsigned char TCON_V[2] = { 0x03, 0x03 };
-const unsigned char TRES_V[4] = { 0x04, 0xB0, 0x03, 0x20 };
-const unsigned char CMD66_V[6] = { 0x49, 0x55, 0x13, 0x5D, 0x05, 0x10 };
-const unsigned char EN_BUF_V[1] = { 0x07 };
-const unsigned char CCSET_V[1] = { 0x01 };
-const unsigned char PWS_V[1] = { 0x22 };
 const unsigned char AN_TM_V[9] = { 0xC0, 0x1C, 0x1C, 0xCC, 0xCC,
 				   0xCC, 0x15, 0x15, 0x55 };
+const unsigned char CMD66_V[6] = { 0x49, 0x55, 0x13, 0x5D, 0x05, 0x10 };
+const unsigned char PSR_V[2] = { 0xDF, 0x69 };
+const unsigned char CDI_V[1] = { 0xF7 };
+const unsigned char TCON_V[2] = { 0x03, 0x03 };
 const unsigned char AGID_V[1] = { 0x10 };
+const unsigned char PWS_V[1] = { 0x22 };
+const unsigned char CCSET_V[1] = { 0x01 };
+const unsigned char TRES_V[4] = { 0x04, 0xB0, 0x03, 0x20 };
+const unsigned char PWR_V[6] = { 0x0F, 0x00, 0x28, 0x2C, 0x28, 0x38 };
+const unsigned char EN_BUF_V[1] = { 0x07 };
 const unsigned char BTST_P_V[2] = { 0xE8, 0x28 };
 const unsigned char BOOST_VDDP_EN_V[1] = { 0x01 };
 const unsigned char BTST_N_V[2] = { 0xE8, 0x28 };
 const unsigned char BUCK_BOOST_VDDN_V[1] = { 0x01 };
 const unsigned char TFT_VCOM_POWER_V[1] = { 0x02 };
-const unsigned char SPIM_V[1] = {
-	0x10
-}; // 0 - Single SPI (Default) 1 - Quad SPI
+
+const unsigned char DRF_V[1] = { 0x00 };
+const unsigned char POF_V[1] = { 0x00 };
+const unsigned char SPIM_V[1] = { 0x10 };
 
 spi_device_handle_t spi;
 
@@ -127,7 +126,7 @@ uint32_t DST_FRAME_SIZE = EPD_FRAME_SIZE;
 
 int EL133UF1_Update(void);
 
-void setGpioLevel(unsigned char pinNumber, unsigned char voltageLevel)
+void epd_set_io(unsigned char pinNumber, unsigned char voltageLevel)
 {
 	gpio_set_level(pinNumber, voltageLevel);
 }
@@ -144,20 +143,20 @@ unsigned char getGpioLevel(unsigned char pinNumber)
 //================== GPIO Setting ====================================
 void resetPin(unsigned int pinStatus)
 {
-	setGpioLevel(EPD_RST, pinStatus);
+	epd_set_io(EPD_RST, pinStatus);
 }
 
 void setPinCsAll(unsigned int setLevel)
 {
 	unsigned char i;
 	for (i = 0; i < sizeof(spiCsPin); i++) {
-		setGpioLevel(spiCsPin[i], setLevel);
+		epd_set_io(spiCsPin[i], setLevel);
 	}
 }
 
 void setPinCs(unsigned char csNumber, unsigned int setLevel)
 {
-	setGpioLevel(spiCsPin[csNumber], setLevel);
+	epd_set_io(spiCsPin[csNumber], setLevel);
 }
 
 void checkBusyHigh(void) // If BUSYN=0 then waiting
@@ -189,28 +188,27 @@ void checkBusyLow(void) // If BUSYN=1 then waiting
 	};
 }
 //====================================================================
-void EPD_IO_WriteCommandData_2CH(const unsigned char cmd,
-				 const unsigned char *data,
-				 unsigned int data_length, unsigned int cs_mask)
+void epd_wcmd_2ch(const unsigned char cmd, const unsigned char *data,
+		  unsigned int data_length, unsigned int cs_mask)
 {
-	if (cs_mask == CS_MASK_MASTER_SLAVE) {
-		setGpioLevel(PIN_CS_M, 0);
-		setGpioLevel(PIN_CS_S, 0);
+	if (cs_mask == CS_MASK_ALL) {
+		epd_set_io(PIN_CS_M, 0);
+		epd_set_io(PIN_CS_S, 0);
 	} else if (cs_mask == CS_MASK_MASTER)
-		setGpioLevel(PIN_CS_M, 0);
+		epd_set_io(PIN_CS_M, 0);
 	else if (cs_mask == CS_MASK_SLAVE)
-		setGpioLevel(PIN_CS_S, 0);
+		epd_set_io(PIN_CS_S, 0);
 
-	EPD_IO_Write_byte(cmd);
-	EPD_IO_WriteDataBytes(data, data_length);
+	epd_wbyte(cmd);
+	epd_wbyte_multi(data, data_length);
 
-	if (cs_mask == CS_MASK_MASTER_SLAVE) {
-		setGpioLevel(PIN_CS_M, 1);
-		setGpioLevel(PIN_CS_S, 1);
+	if (cs_mask == CS_MASK_ALL) {
+		epd_set_io(PIN_CS_M, 1);
+		epd_set_io(PIN_CS_S, 1);
 	} else if (cs_mask == CS_MASK_MASTER)
-		setGpioLevel(PIN_CS_M, 1);
+		epd_set_io(PIN_CS_M, 1);
 	else if (cs_mask == CS_MASK_SLAVE)
-		setGpioLevel(PIN_CS_S, 1);
+		epd_set_io(PIN_CS_S, 1);
 }
 //====================================================================
 static void io_initial(void)
@@ -298,37 +296,25 @@ int EL133UF1_Init(void)
 	checkBusyHigh();
 	ESP_LOGI(TAG, "EPD reset ok\r\n");
 
-	EPD_IO_WriteCommandData_2CH(AN_TM, AN_TM_V, sizeof(AN_TM_V),
-				    CS_MASK_MASTER);
-	EPD_IO_WriteCommandData_2CH(CMD66, CMD66_V, sizeof(CMD66_V),
-				    CS_MASK_MASTER_SLAVE);
-	EPD_IO_WriteCommandData_2CH(PSR, PSR_V, sizeof(PSR_V),
-				    CS_MASK_MASTER_SLAVE);
-	EPD_IO_WriteCommandData_2CH(CDI, CDI_V, sizeof(CDI_V),
-				    CS_MASK_MASTER_SLAVE);
-	EPD_IO_WriteCommandData_2CH(TCON, TCON_V, sizeof(TCON_V),
-				    CS_MASK_MASTER_SLAVE);
-	EPD_IO_WriteCommandData_2CH(AGID, AGID_V, sizeof(AGID_V),
-				    CS_MASK_MASTER_SLAVE);
-	EPD_IO_WriteCommandData_2CH(PWS, PWS_V, sizeof(PWS_V),
-				    CS_MASK_MASTER_SLAVE);
-	EPD_IO_WriteCommandData_2CH(CCSET, CCSET_V, sizeof(CCSET_V),
-				    CS_MASK_MASTER_SLAVE);
-	EPD_IO_WriteCommandData_2CH(TRES, TRES_V, sizeof(TRES_V),
-				    CS_MASK_MASTER_SLAVE);
-	EPD_IO_WriteCommandData_2CH(PWR, PWR_V, sizeof(PWR_V), CS_MASK_MASTER);
-	EPD_IO_WriteCommandData_2CH(EN_BUF, EN_BUF_V, sizeof(EN_BUF_V),
-				    CS_MASK_MASTER);
-	EPD_IO_WriteCommandData_2CH(BTST_P, BTST_P_V, sizeof(BTST_P_V),
-				    CS_MASK_MASTER);
-	EPD_IO_WriteCommandData_2CH(BOOST_VDDP_EN, BOOST_VDDP_EN_V,
-				    sizeof(BOOST_VDDP_EN_V), CS_MASK_MASTER);
-	EPD_IO_WriteCommandData_2CH(BTST_N, BTST_N_V, sizeof(BTST_N_V),
-				    CS_MASK_MASTER);
-	EPD_IO_WriteCommandData_2CH(BUCK_BOOST_VDDN, BUCK_BOOST_VDDN_V,
-				    sizeof(BUCK_BOOST_VDDN_V), CS_MASK_MASTER);
-	EPD_IO_WriteCommandData_2CH(TFT_VCOM_POWER, TFT_VCOM_POWER_V,
-				    sizeof(TFT_VCOM_POWER_V), CS_MASK_MASTER);
+	epd_wcmd_2ch(AN_TM, AN_TM_V, sizeof(AN_TM_V), CS_MASK_MASTER);
+	epd_wcmd_2ch(CMD66, CMD66_V, sizeof(CMD66_V), CS_MASK_ALL);
+	epd_wcmd_2ch(PSR, PSR_V, sizeof(PSR_V), CS_MASK_ALL);
+	epd_wcmd_2ch(CDI, CDI_V, sizeof(CDI_V), CS_MASK_ALL);
+	epd_wcmd_2ch(TCON, TCON_V, sizeof(TCON_V), CS_MASK_ALL);
+	epd_wcmd_2ch(AGID, AGID_V, sizeof(AGID_V), CS_MASK_ALL);
+	epd_wcmd_2ch(PWS, PWS_V, sizeof(PWS_V), CS_MASK_ALL);
+	epd_wcmd_2ch(CCSET, CCSET_V, sizeof(CCSET_V), CS_MASK_ALL);
+	epd_wcmd_2ch(TRES, TRES_V, sizeof(TRES_V), CS_MASK_ALL);
+	epd_wcmd_2ch(PWR, PWR_V, sizeof(PWR_V), CS_MASK_MASTER);
+	epd_wcmd_2ch(EN_BUF, EN_BUF_V, sizeof(EN_BUF_V), CS_MASK_MASTER);
+	epd_wcmd_2ch(BTST_P, BTST_P_V, sizeof(BTST_P_V), CS_MASK_MASTER);
+	epd_wcmd_2ch(BOOST_VDDP_EN, BOOST_VDDP_EN_V, sizeof(BOOST_VDDP_EN_V),
+		     CS_MASK_MASTER);
+	epd_wcmd_2ch(BTST_N, BTST_N_V, sizeof(BTST_N_V), CS_MASK_MASTER);
+	epd_wcmd_2ch(BUCK_BOOST_VDDN, BUCK_BOOST_VDDN_V,
+		     sizeof(BUCK_BOOST_VDDN_V), CS_MASK_MASTER);
+	epd_wcmd_2ch(TFT_VCOM_POWER, TFT_VCOM_POWER_V, sizeof(TFT_VCOM_POWER_V),
+		     CS_MASK_MASTER);
 
 	ESP_LOGI(TAG, "EPD initial command send done\r\n");
 	return 0;
@@ -337,21 +323,21 @@ int EL133UF1_Init(void)
 void EL133UF1_DisplayFrame(const unsigned char *frame_buffer_m,
 			   const unsigned char *frame_buffer_s)
 {
-	// epd_io.EPD_IO_WriteCommandData_2CH(SPIM, SPIM_V, sizeof(SPIM_V), CS_MASK_MASTER_SLAVE);
+	// epd_io.EPD_IO_WriteCommandData_2CH(SPIM, SPIM_V, sizeof(SPIM_V), CS_MASK_ALL);
 	// ATTENTION: 原本是在一个CS下拉周期里完成命令和数据的发送。此处待测试
 	// EPD_IO_CS_M_Ctrl(0);
-	setGpioLevel(PIN_CS_M, 0);
-	EPD_IO_Write_byte(DTM);
-	EPD_IO_WriteDataBytes(frame_buffer_m, EPD_WIDTH * EPD_HEIGHT / 4);
+	epd_set_io(PIN_CS_M, 0);
+	epd_wbyte(DTM);
+	epd_wbyte_multi(frame_buffer_m, EPD_WIDTH * EPD_HEIGHT / 4);
 	// EPD_IO_CS_M_Ctrl(1);
-	setGpioLevel(PIN_CS_M, 1);
+	epd_set_io(PIN_CS_M, 1);
 
 	// EPD_IO_CS_S_Ctrl(0);
-	setGpioLevel(PIN_CS_S, 0);
-	EPD_IO_Write_byte(DTM);
-	EPD_IO_WriteDataBytes(frame_buffer_s, EPD_WIDTH * EPD_HEIGHT / 4);
+	epd_set_io(PIN_CS_S, 0);
+	epd_wbyte(DTM);
+	epd_wbyte_multi(frame_buffer_s, EPD_WIDTH * EPD_HEIGHT / 4);
 	// EPD_IO_CS_S_Ctrl(1);
-	setGpioLevel(PIN_CS_S, 1);
+	epd_set_io(PIN_CS_S, 1);
 
 	EL133UF1_Update();
 }
@@ -392,24 +378,22 @@ int EL133UF1_Update(void)
 {
 	ESP_LOGI(TAG, "Updating");
 
-	setGpioLevel(PIN_CS_M, 0);
-	setGpioLevel(PIN_CS_S, 0);
+	epd_set_io(PIN_CS_M, 0);
+	epd_set_io(PIN_CS_S, 0);
 
-	EPD_IO_Write_byte(PON);
+	epd_wbyte(PON);
 
-	setGpioLevel(PIN_CS_M, 1);
-	setGpioLevel(PIN_CS_S, 1);
+	epd_set_io(PIN_CS_M, 1);
+	epd_set_io(PIN_CS_S, 1);
 	checkBusyHigh();
 	// ATTENTION: check busy 原本放在CS拉高之前。此为同一般SPI接口屏幕的区别，需要测试是否兼容。
 
 	delayms(30);
-	EPD_IO_WriteCommandData_2CH(DRF, DRF_V, sizeof(DRF_V),
-				    CS_MASK_MASTER_SLAVE);
+	epd_wcmd_2ch(DRF, DRF_V, sizeof(DRF_V), CS_MASK_ALL);
 
 	checkBusyHigh();
 	// ATTENTION: check busy 原本放在CS拉高之前。此为同一般SPI接口屏幕的区别，需要测试是否兼容。
-	EPD_IO_WriteCommandData_2CH(POF, POF_V, sizeof(POF_V),
-				    CS_MASK_MASTER_SLAVE);
+	epd_wcmd_2ch(POF, POF_V, sizeof(POF_V), CS_MASK_ALL);
 
 	ESP_LOGI(TAG, "Update Finish");
 

@@ -30,7 +30,7 @@ static const char TAG[] = "YEPD_IF";
 
 extern spi_device_handle_t spi;
 
-void EPD_IO_WriteDataBytes(const unsigned char *bytes, unsigned int length)
+void epd_wbyte_multi(const unsigned char *bytes, unsigned int length)
 {
 	esp_err_t ret;
 	spi_transaction_t t;
@@ -65,9 +65,9 @@ void EPD_IO_WriteDataBytes(const unsigned char *bytes, unsigned int length)
 	}
 }
 
-void EPD_IO_Write_byte(const unsigned char data)
+void epd_wbyte(const unsigned char data)
 {
-	EPD_IO_WriteDataBytes(&data, 1);
+	epd_wbyte_multi(&data, 1);
 }
 
 // GPIO 模拟 SPI 时钟信号

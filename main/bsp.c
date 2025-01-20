@@ -323,8 +323,10 @@ esp_err_t bsp_create_web_qr_str(char *str_buf)
 	} else {
 		ESP_LOGE(TAG, "Failed to get IP address\n");
 	}
-	sprintf(str_buf, "http://" IPSTR "/?width=%d&height=%d",
-		IP2STR(&ip_info.ip), epd->width, epd->height);
+	// sprintf(str_buf, "http://" IPSTR "/?width=%d&height=%d",
+	// 	IP2STR(&ip_info.ip), epd->width, epd->height);
+
+	sprintf(str_buf, "http://" IPSTR "/", IP2STR(&ip_info.ip));
 
 	return ESP_OK;
 }
@@ -437,7 +439,7 @@ int scan_and_sort_images()
 	while ((entry = readdir(dir)) != NULL) {
 		if (strstr(entry->d_name, ".jpg")) {
 			int num = atoi(entry->d_name); // 提取文件名中的整数部分
-			if (num > 0 && image_count < MAX_FILES) {
+			if (num >= 0 && image_count < MAX_FILES) {
 				image_numbers[image_count++] = num;
 			}
 		}

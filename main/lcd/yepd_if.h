@@ -15,12 +15,12 @@
 
 #define CS_MASK_MASTER 0x01
 #define CS_MASK_SLAVE 0x10
-#define CS_MASK_MASTER_SLAVE 0x11
+#define CS_MASK_ALL 0x11
 
 #define CHUNK_SIZE 4096 * 2
 
-void EPD_IO_WriteDataBytes(const unsigned char *bytes, unsigned int length);
-void EPD_IO_Write_byte(const unsigned char data);
+void epd_wbyte_multi(const unsigned char *bytes, unsigned int length);
+void epd_wbyte(const unsigned char data);
 
 void yepd_write(YEPD *epd, uint8_t *cmd, size_t cmd_len, uint8_t *data,
 		size_t data_len);
