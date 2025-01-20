@@ -33,9 +33,9 @@
 #include "sdmmc_cmd.h"
 #include <esp_timer.h>
 
-#include "img_prcs.h"
+#include "img_proc.h"
 
-static const char *TAG = "file";
+static const char *TAG = "bsp.c";
 
 sdmmc_card_t *card;
 
@@ -579,7 +579,6 @@ void delete_current_image()
 		// 如果没有图片剩余，重置为无效值
 		current_image_number = -1;
 		printf("No images left.\n");
-		// TODO: 显示调色板
 		display_palette(epd);
 		return;
 	}

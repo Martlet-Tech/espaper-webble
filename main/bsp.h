@@ -13,7 +13,7 @@
 
 #include "stdint.h"
 #include "esp_err.h"
-#include "epd.h"
+#include "yepd.h"
 
 #define PIN_SW46 46
 #define PIN_SW3 3

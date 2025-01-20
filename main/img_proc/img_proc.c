@@ -9,7 +9,7 @@
  * 
  */
 
-#include "img_prcs.h"
+#include "img_proc.h"
 #include "utils.h"
 #include "YMS16001200-1330AAX-E6.h"
 #include "bsp.h"
@@ -26,7 +26,7 @@
 #include <esp_netif_types.h>
 #include "esp_wifi.h"
 
-const char *TAG = "IMG_PRCS";
+static const char *TAG = "IMG_PRCS";
 int display_debug = 0;
 char processing_stage[20] = "idle"; // 初始阶段;
 
@@ -293,15 +293,15 @@ void atkinson_dither(uint8_t *image, uint8_t *output_index, int image_width,
 }
 
 void palette_index_to_E6_data(uint8_t *index_buffer, uint8_t *dst_m,
-			      uint8_t *dst_s)
+			      uint8_t *dst_s, uint16_t w, uint16_t h)
 {
 	uint8_t temp = 0;
 	uint8_t index;
 	int pixel_count = 0;
-	for (int j = 0; j < EPD_HEIGHT; j++) {
-		for (int i = 0; i < EPD_WIDTH / 2; i++) {
+	for (int j = 0; j < h; j++) {
+		for (int i = 0; i < w / 2; i++) {
 			temp <<= 4;
-			index = index_buffer[i + j * EPD_WIDTH];
+			index = index_buffer[i + j * w];
 			if (index >= 4)
 				index++;
 			temp |= index;
@@ -314,9 +314,9 @@ void palette_index_to_E6_data(uint8_t *index_buffer, uint8_t *dst_m,
 			}
 		}
 
-		for (int i = EPD_WIDTH / 2; i < EPD_WIDTH; i++) {
+		for (int i = w / 2; i < w; i++) {
 			temp <<= 4;
-			index = index_buffer[i + j * EPD_WIDTH];
+			index = index_buffer[i + j * w];
 			if (index >= 4)
 				index++;
 			temp |= index;
@@ -482,7 +482,7 @@ esp_err_t display_palette(YEPD *epd)
 void draw_px_ug_port(int16_t x, int16_t y, uint32_t color, void *fb)
 {
 	if (fb) {
-		((uint8_t *)fb)[y * EPD_WIDTH + x] = color;
+		((uint8_t *)fb)[y * epd->width + x] = color;
 	} else {
 		ESP_LOGE("draw_px_ug_port", "fb not initial");
 	}
@@ -542,7 +542,7 @@ void draw_qrcode_on_ram(YEPD *epd, uint8_t *fb1)
 
 	ESP_LOGI(TAG, "draw_qrcode_on_ram start");
 
-	UG_Init(&ug, draw_px_ug_port, EPD_WIDTH, EPD_HEIGHT, fb1);
+	UG_Init(&ug, draw_px_ug_port, epd->width, epd->height, fb1);
 	UG_FillFrame(0, epd->height - 110, epd->width - 1, epd->height - 1,
 		     WHITE);
 	UG_SetBackcolor(WHITE);
@@ -594,7 +594,7 @@ void draw_note(YEPD *epd, uint8_t *fb1)
 		"After connecting to the Wi-Fi, you may see a message saying that this network has no internet access, or prompting you to use mobile data instead. This is normal, as this project operates locally. Choose to stay on this Wi-Fi network and ignore prompts to switch to mobile data.";
 
 	UG_GUI ug;
-	UG_Init(&ug, draw_px_ug_port, EPD_WIDTH, EPD_HEIGHT, fb1);
+	UG_Init(&ug, draw_px_ug_port, epd->width, epd->height, fb1);
 	UG_FillFrame(0, epd->height - 110, epd->width - 1, epd->height - 1,
 		     WHITE);
 	UG_SetBackcolor(WHITE);
@@ -609,18 +609,18 @@ void show_start_screen(YEPD *epd)
 {
 	show_ram_space("show_start_screen begin");
 
-	uint8_t *fb1 = (uint8_t *)heap_caps_malloc(EPD_HEIGHT * EPD_WIDTH,
+	uint8_t *fb1 = (uint8_t *)heap_caps_malloc(epd->width * epd->height,
 						   MALLOC_CAP_SPIRAM);
-	uint8_t *fbm = (uint8_t *)heap_caps_malloc(EPD_HEIGHT * EPD_WIDTH / 4,
+	uint8_t *fbm = (uint8_t *)heap_caps_malloc(epd->width * epd->height / 4,
 						   MALLOC_CAP_SPIRAM);
-	uint8_t *fbs = (uint8_t *)heap_caps_malloc(EPD_HEIGHT * EPD_WIDTH / 4,
+	uint8_t *fbs = (uint8_t *)heap_caps_malloc(epd->width * epd->height / 4,
 						   MALLOC_CAP_SPIRAM);
 
 	show_ram_space("show_start_screen after alloc");
 
 	// compatiable with color pallet
-	for (int y = 0; y < EPD_HEIGHT; y++) {
-		for (int x = 0; x < EPD_WIDTH; x++) {
+	for (int y = 0; y < epd->height; y++) {
+		for (int x = 0; x < epd->width; x++) {
 			// white
 			if (x < 200) {
 				draw_px_ug_port(x, y, BLACK, fb1);
@@ -652,7 +652,7 @@ void show_start_screen(YEPD *epd)
 	draw_qrcode_on_ram(epd, fb1);
 
 	// fb1 -> fb2
-	palette_index_to_E6_data(fb1, fbm, fbs);
+	palette_index_to_E6_data(fb1, fbm, fbs, epd->width, epd->height);
 
 	// ppd send data, update
 	//EL133UF1_Init();

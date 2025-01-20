@@ -9,12 +9,19 @@
  * 
  */
 
-#ifndef __IMG_PRCS_H__
-#define __IMG_PRCS_H__
+#ifndef __IMG_PROC_H__
+#define __IMG_PROC_H__
 
 #include "esp_err.h"
-#include "epd.h"
+#include "yepd.h"
 #include <esp_jpeg_enc.h>
+
+#define BLACK 0x0
+#define WHITE 0x1
+#define YELLOW 0x2
+#define RED 0x3
+#define BLUE 0x5
+#define GREEN 0x6
 
 extern int display_debug;
 
@@ -31,7 +38,7 @@ void draw_qr_code(uint16_t x, uint16_t y, int width_t, int side,
 void atkinson_dither(uint8_t *image, uint8_t *output_index, int image_width,
 		     int image_height, uint8_t **palette, size_t palette_size);
 void palette_index_to_E6_data(uint8_t *index_buffer, uint8_t *dst_m,
-			      uint8_t *dst_s);
+			      uint8_t *dst_s, uint16_t w, uint16_t h);
 
 jpeg_error_t esp_jpeg_encode_one_picture(uint32_t w, uint32_t h, uint8_t *inbuf,
 					 uint8_t *outbuf);

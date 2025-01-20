@@ -20,9 +20,9 @@
 #include "sdmmc_cmd.h"
 #include "bsp.h"
 #include "utils.h"
-#include "img_prcs.h"
+#include "img_proc.h"
 #include "esp_event.h"
-#include "epd.h"
+#include "yepd.h"
 
 #define BUFFER_SIZE 1024
 #define MAX_FILE_SIZE (4 * 1024 * 1024) // 假设文件大小最大为 2MB

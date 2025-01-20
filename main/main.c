@@ -34,10 +34,10 @@
 #include "ap.h"
 #include "http_server.h"
 #include "bsp.h"
-#include "img_prcs.h"
+#include "img_proc.h"
 #include "utils.h"
-#include "comm.h"
-#include "epd.h"
+#include "yepd_if.h"
+#include "yepd.h"
 
 static const char *TAG = "main";
 
@@ -308,7 +308,7 @@ void process_config(const char *file_path)
 		cJSON_GetObjectItem(root, "module")->valuestring;
 
 	// 获取指向 epd_list 对象的指针
-	epd = yepd_init_by_name(module_name);
+	epd = yepd_find_by_name(module_name);
 	if (epd != NULL) {
 		printf("EPD details:\n");
 		printf("  Name: %s\n", epd->name);
