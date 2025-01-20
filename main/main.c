@@ -248,9 +248,9 @@ static void save_defconfig(FILE *file, const char *file_path)
 	const char *default_config =
 		"{\n"
 		"  \"mode\": \"0\",\n"
-		"  \"debug\": true\n"
+		"  \"debug\": true,\n"
 		"  \"module\": \"YMS16001200-1330AAX-E6\",\n"
-		"  \"password\": \"00000000\",\n"
+		"  \"password\": \"00000000\"\n"
 		"}";
 
 	// 文件不存在，创建并写入默认配置
