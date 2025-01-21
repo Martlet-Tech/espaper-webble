@@ -90,14 +90,6 @@ static void io_initial(void)
 	ESP_LOGI(TAG, "Configuring IO_RESETN");
 	gpio_config(&gpiocfg);
 
-	//gpiocfg.pin_bit_mask = (1ULL << IO_BS1);
-	//ESP_LOGI(TAG, "Configuring IO_BS1");
-	//gpio_config(&gpiocfg);
-	//
-	//gpiocfg.pin_bit_mask = (1ULL << IO_BS0);
-	//ESP_LOGI(TAG, "Configuring IO_BS0");
-	//gpio_config(&gpiocfg);
-
 	gpiocfg.pin_bit_mask = (1ULL << IO_DC);
 	ESP_LOGI(TAG, "Configuring IO_DC");
 	gpio_config(&gpiocfg);
@@ -127,7 +119,7 @@ static void io_initial(void)
 	ESP_LOGI(TAG, "io_initial completed");
 }
 
-void spi_9b_init(void)
+static void spi_9b_init(void)
 {
 	SCL_L;
 	SDA_H;
@@ -139,12 +131,12 @@ void spi_9b_init(void)
 	delay_ms(10);
 }
 
-void check_busy_high(void) // If BUSYN=0 then waiting
+static void check_busy_high(void) // If BUSYN=0 then waiting
 {
 	yepd_check_high(IO_BUSY);
 }
 
-void reset(void)
+static void reset(void)
 {
 	RSTN_L;
 	delay_ms(42);
@@ -156,7 +148,7 @@ void reset(void)
 	delay_ms(42);
 }
 
-void SPI_COMMAND(unsigned char dat)
+static void SPI_COMMAND(unsigned char dat)
 {
 	unsigned char i;
 
@@ -188,7 +180,7 @@ void SPI_COMMAND(unsigned char dat)
 	delay_us(1);
 }
 
-void SPI_DATA(unsigned char dat)
+static void SPI_DATA(unsigned char dat)
 {
 	unsigned char i;
 
@@ -220,7 +212,8 @@ void SPI_DATA(unsigned char dat)
 	delay_us(1);
 }
 
-void EPD_Display_Black()
+#if 0
+static void EPD_Display_Black()
 {
 	unsigned long i;
 
@@ -256,8 +249,9 @@ void EPD_Display_Black()
 	SPI_DATA(0x00);
 	check_busy_high();
 }
+#endif
 
-void EPD_Init()
+static void EPD_Init()
 {
 	//20211212
 	SPI_COMMAND(0xAA);
@@ -329,6 +323,9 @@ void EPD_Init()
 int YMS800480_073AAX_E6_init(void)
 {
 	io_initial();
+	delay_ms(100);
+
+	spi_9b_init();
 	delay_ms(100);
 
 	reset();
