@@ -83,8 +83,6 @@ static const char TAG[] = "YMS16001200-1330AAX-E6.c";
 
 void setPinCsAll(unsigned int setLevel);
 void setPinCs(unsigned char csNumber, unsigned int setLevel);
-void checkBusyHigh(void);
-void checkBusyLow(void);
 
 void EL133UF1_DisplayFrame(const unsigned char *frame_buffer_m,
 			   const unsigned char *frame_buffer_s);
@@ -159,34 +157,6 @@ void setPinCs(unsigned char csNumber, unsigned int setLevel)
 	epd_set_io(spiCsPin[csNumber], setLevel);
 }
 
-void checkBusyHigh(void) // If BUSYN=0 then waiting
-{
-	uint32_t cnt = 0;
-	while (!(getGpioLevel(EPD_BUSY))) {
-		vTaskDelay(pdMS_TO_TICKS(10)); // Yield to other tasks
-		cnt++;
-		if (cnt >= 100) {
-			cnt = 0;
-			printf("+");
-			fflush(stdout); // 手动刷新缓冲区
-		}
-	};
-	printf("\r\n");
-}
-
-void checkBusyLow(void) // If BUSYN=1 then waiting
-{
-	uint32_t cnt = 0;
-	while (getGpioLevel(EPD_BUSY)) {
-		vTaskDelay(10); // Yield to other tasks
-		cnt++;
-		if (cnt >= 100) {
-			cnt = 0;
-			printf("-");
-			fflush(stdout); // 手动刷新缓冲区
-		}
-	};
-}
 //====================================================================
 void epd_wcmd_2ch(const unsigned char cmd, const unsigned char *data,
 		  unsigned int data_length, unsigned int cs_mask)
@@ -293,7 +263,7 @@ int EL133UF1_Init(void)
 
 	epdHardwareReset();
 
-	checkBusyHigh();
+	yepd_check_high(EPD_BUSY);
 	ESP_LOGI(TAG, "EPD reset ok\r\n");
 
 	epd_wcmd_2ch(AN_TM, AN_TM_V, sizeof(AN_TM_V), CS_MASK_MASTER);
@@ -385,13 +355,13 @@ int EL133UF1_Update(void)
 
 	epd_set_io(PIN_CS_M, 1);
 	epd_set_io(PIN_CS_S, 1);
-	checkBusyHigh();
+	yepd_check_high(EPD_BUSY);
 	// ATTENTION: check busy 原本放在CS拉高之前。此为同一般SPI接口屏幕的区别，需要测试是否兼容。
 
 	delayms(30);
 	epd_wcmd_2ch(DRF, DRF_V, sizeof(DRF_V), CS_MASK_ALL);
 
-	checkBusyHigh();
+	yepd_check_high(EPD_BUSY);
 	// ATTENTION: check busy 原本放在CS拉高之前。此为同一般SPI接口屏幕的区别，需要测试是否兼容。
 	epd_wcmd_2ch(POF, POF_V, sizeof(POF_V), CS_MASK_ALL);
 

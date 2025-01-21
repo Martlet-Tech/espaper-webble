@@ -71,4 +71,10 @@ typedef struct {
 YEPD *yepd_find_by_name(const char *module_name);
 
 int yepd_display_index(YEPD *epd, uint8_t *index_buffer);
+
+void yepd_check_high(uint32_t pin);
+void yepd_check_low(uint32_t pin);
+
+void build_data_e6(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1,
+		   uint8_t *index_buff, uint8_t *data_buff);
 #endif

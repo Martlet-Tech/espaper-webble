@@ -13,23 +13,25 @@
 #include "yepd_port.h"
 #include <string.h>
 #include <stdio.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 #include "YMS400600-040AAX-E6.h"
 #include "YMS800480-073AAX-E6.h"
 #include "YMS16001200-1330AAX-E6.h"
 
-static void build_data_e6(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1,
-			  uint8_t *index_buff, uint8_t *data_buff)
+void build_data_e6(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1,
+		   uint8_t *index_buff, uint8_t *data_buff)
 {
 	uint8_t temp = 0;
 	uint8_t index;
 	int pixel_count = 0;
-	uint16_t width = x1 - x0 + 1; // 指定区域的宽度
+	uint16_t width = x1 - x0; // 指定区域的宽度
 	//uint16_t height = y1 - y0 + 1; // 指定区域的高度
 
 	// 遍历指定区域内的所有像素
-	for (int j = y0; j <= y1; j++) {
-		for (int i = x0; i <= x1; i++) {
+	for (int j = y0; j < y1; j++) {
+		for (int i = x0; i < x1; i++) {
 			temp <<= 4; // 为新像素腾出位置（左移4位）
 			index = index_buff[i + j * width]; // 获取当前像素的索引值
 			if (index >= 4) {
@@ -209,4 +211,33 @@ int yepd_display_index(YEPD *epd, uint8_t *index_buffer)
 	yepd_execute_sequence(epd, epd->cmd_disp);
 
 	return 0;
+}
+
+void yepd_check_high(uint32_t pin) // If BUSYN=0 then waiting
+{
+	uint32_t cnt = 0;
+	while (!(gpio_get_level(pin))) {
+		vTaskDelay(pdMS_TO_TICKS(10)); // Yield to other tasks
+		cnt++;
+		if (cnt >= 100) {
+			cnt = 0;
+			printf("+");
+			fflush(stdout); // 手动刷新缓冲区
+		}
+	};
+	printf("\r\n");
+}
+
+void yepd_check_low(uint32_t pin) // If BUSYN=1 then waiting
+{
+	uint32_t cnt = 0;
+	while (gpio_get_level(pin)) {
+		vTaskDelay(10); // Yield to other tasks
+		cnt++;
+		if (cnt >= 100) {
+			cnt = 0;
+			printf("-");
+			fflush(stdout); // 手动刷新缓冲区
+		}
+	};
 }
