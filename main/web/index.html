@@ -434,13 +434,23 @@
                 document.body.removeChild(previousResultCanvas);
               }
 
+              // 创建一个新的 canvas，用于调整大小
+              var initWidth = device_width; // 初始宽度，默认1200
+              var initHeight = device_height; // 初始高度，默认1600
+              var finalCanvas = document.createElement("canvas");
+              finalCanvas.width = initWidth;
+              finalCanvas.height = initHeight;
+
+              var ctx = finalCanvas.getContext("2d");
+              ctx.drawImage($resultCanvas, 0, 0, initWidth, initHeight); // 绘制到初始大小
+
               previewContainer.innerHTML = "";
-              previewContainer.appendChild($resultCanvas); // 将新画布添加到容器中
+              previewContainer.appendChild(finalCanvas); // 将新画布添加到容器中
 
-              $resultCanvas.style.maxWidth = "100%";
-              $resultCanvas.style.maxHeight = "100%";
+              finalCanvas.style.maxWidth = "100%";
+              finalCanvas.style.maxHeight = "100%";
 
-              submit($resultCanvas);
+              submit(finalCanvas);
             },
             uploadCallback: function (src) {
               console.log("uploadCallback " + src);
@@ -585,8 +595,7 @@
           (i.m = t),
           (i.c = e),
           (i.d = function (t, e, n) {
-            i.o(t, e) ||
-              Object.defineProperty(t, e, { enumerable: !0, get: n });
+            i.o(t, e) || Object.defineProperty(t, e, { enumerable: !0, get: n });
           }),
           (i.r = function (t) {
             "undefined" != typeof Symbol &&
@@ -713,14 +722,10 @@
                           s = 0 | e,
                           a = Math.max(s >= 0 ? s : n - Math.abs(s), 0);
                           a < n;
-
                         ) {
                           if (
                             (r = i[a]) === (o = t) ||
-                            ("number" == typeof r &&
-                              "number" == typeof o &&
-                              isNaN(r) &&
-                              isNaN(o))
+                            ("number" == typeof r && "number" == typeof o && isNaN(r) && isNaN(o))
                           )
                             return !0;
                           a++;
@@ -730,71 +735,35 @@
                     }),
                     (s.prototype.initTitle = function (t) {
                       (this.title = null != t.title ? t.title : ""),
-                        (this.$title = document.querySelector(
-                          "#" + this.id + " .crop-title"
-                        )),
+                        (this.$title = document.querySelector("#" + this.id + " .crop-title")),
                         (this.$title.innerText = this.title);
                     }),
                     (s.prototype.initBoxBorder = function (t, e) {
-                      (this.borderWidth =
-                        null != t.borderWidth ? t.borderWidth : 2),
-                        (this.borderColor =
-                          null != t.borderColor ? t.borderColor : "#fff"),
-                        (this.boldCornerLen =
-                          null != t.boldCornerLen ? t.boldCornerLen : 32),
-                        (this.boldCornerWidth = t.boldCornerWidth
-                          ? t.boldCornerWidth
-                          : 4),
-                        (this.coverColor =
-                          null != t.coverColor
-                            ? t.coverColor
-                            : "rgba(0,0,0,.3)"),
-                        (this.coverDraw =
-                          null != t.coverDraw ? t.coverDraw : function () { }),
-                        (this.borderDraw =
-                          null != t.borderDraw
-                            ? t.borderDraw
-                            : this.defaultBorderDraw),
-                        e ||
-                        (this.borderDraw(this.$cropCover),
-                          this.coverDraw(this.$cropCover));
+                      (this.borderWidth = null != t.borderWidth ? t.borderWidth : 2),
+                        (this.borderColor = null != t.borderColor ? t.borderColor : "#fff"),
+                        (this.boldCornerLen = null != t.boldCornerLen ? t.boldCornerLen : 32),
+                        (this.boldCornerWidth = t.boldCornerWidth ? t.boldCornerWidth : 4),
+                        (this.coverColor = null != t.coverColor ? t.coverColor : "rgba(0,0,0,.3)"),
+                        (this.coverDraw = null != t.coverDraw ? t.coverDraw : function () { }),
+                        (this.borderDraw = null != t.borderDraw ? t.borderDraw : this.defaultBorderDraw),
+                        e || (this.borderDraw(this.$cropCover), this.coverDraw(this.$cropCover));
                     }),
                     (s.prototype.initBoxCursor = function (t) {
-                      const e = this.isSupportTouch
-                        ? 10 * this.borderWidth
-                        : 2 * this.borderWidth;
-                      (this.cursorHoverWidth =
-                        null != t.cursorHoverWidth ? t.cursorHoverWidth : e),
-                        (this.isFixedAspectRatio =
-                          null != t.isFixedAspectRatio &&
-                          t.isFixedAspectRatio);
+                      const e = this.isSupportTouch ? 10 * this.borderWidth : 2 * this.borderWidth;
+                      (this.cursorHoverWidth = null != t.cursorHoverWidth ? t.cursorHoverWidth : e),
+                        (this.isFixedAspectRatio = null != t.isFixedAspectRatio && t.isFixedAspectRatio);
                     }),
                     (s.prototype.initFuncBtns = function (t) {
-                      (this.funcBtns =
-                        null != t.funcBtns
-                          ? t.funcBtns
-                          : ["close", "crop", "around", "reset"]),
-                        (this.cropCallback =
-                          null != t.cropCallback
-                            ? t.cropCallback
-                            : function () { }),
-                        (this.closeCallback =
-                          null != t.closeCallback
-                            ? t.closeCallback
-                            : function () { }),
-                        (this.uploadCallback =
-                          null != t.uploadCallback
-                            ? t.uploadCallback
-                            : function () { }),
-                        (this.$cropBtns = document.querySelector(
-                          "#" + this.id + " .crop-btns"
-                        ));
+                      (this.funcBtns = null != t.funcBtns ? t.funcBtns : ["close", "crop", "around", "reset"]),
+                        (this.cropCallback = null != t.cropCallback ? t.cropCallback : function () { }),
+                        (this.closeCallback = null != t.closeCallback ? t.closeCallback : function () { }),
+                        (this.uploadCallback = null != t.uploadCallback ? t.uploadCallback : function () { }),
+                        (this.$cropBtns = document.querySelector("#" + this.id + " .crop-btns"));
                       var e = "";
                       this.funcBtns.includes("upload") &&
                         ((e += '<div class="upload-btn-container">'),
                           (e += '<button class="upload-btn"></button>'),
-                          (e +=
-                            '<input type="file" accept="image/png,image/jpeg">'),
+                          (e += '<input type="file" accept="image/png,image/jpeg">'),
                           (e += "</div>")),
                         this.funcBtns.includes("close") &&
                         (e += '<button class="crop-close"></button>'),
@@ -807,10 +776,7 @@
                         (this.$cropBtns.innerHTML = e),
                         this.funcBtns.includes("upload") &&
                         (this.$uploadBtn
-                          ? this.$uploadBtn.removeEventListener(
-                            "change",
-                            this.__uploadInput
-                          )
+                          ? this.$uploadBtn.removeEventListener("change", this.__uploadInput)
                           : (this.__uploadInput =
                             this.uploadInput.bind(this)),
                           (this.$uploadBtn = document.querySelector(
@@ -825,32 +791,18 @@
                           )),
                         this.funcBtns.includes("crop") &&
                         (this.$cropBtn
-                          ? this.$cropBtn.removeEventListener(
-                            "click",
-                            this.__crop
-                          )
+                          ? this.$cropBtn.removeEventListener("click", this.__crop)
                           : (this.__crop = this.crop.bind(this)),
                           (this.$cropBtn = document.querySelector(
                             "#" + this.id + " .crop-btn"
                           )),
-                          this.$cropBtn.addEventListener(
-                            "click",
-                            this.__crop
-                          )),
+                          this.$cropBtn.addEventListener("click", this.__crop)),
                         this.funcBtns.includes("around") &&
                         (this.$aroundBtn
-                          ? this.$aroundBtn.removeEventListener(
-                            "click",
-                            this.__around
-                          )
+                          ? this.$aroundBtn.removeEventListener("click", this.__around)
                           : (this.__around = this.around.bind(this)),
-                          (this.$aroundBtn = document.querySelector(
-                            "#" + this.id + " .crop-around"
-                          )),
-                          this.$aroundBtn.addEventListener(
-                            "click",
-                            this.__around
-                          )),
+                          (this.$aroundBtn = document.querySelector("#" + this.id + " .crop-around")),
+                          this.$aroundBtn.addEventListener("click", this.__around)),
                         this.funcBtns.includes("reset") &&
                         (this.$resetBtn
                           ? this.$resetBtn.removeEventListener(
@@ -886,62 +838,28 @@
                     (s.prototype.initRotateSlider = function (t) {
                       (this.rotateSlider =
                         null == t.rotateSlider || t.rotateSlider),
-                        (this.startAngle =
-                          null != t.startAngle ? t.startAngle : -90),
-                        (this.endAngle =
-                          null != t.endAngle ? t.endAngle : 90),
-                        (this.gapAngle =
-                          null != t.gapAngle ? t.gapAngle : 10),
-                        (this.lineationItemWidth =
-                          null != t.lineationItemWidth
-                            ? t.lineationItemWidth
-                            : 40.5),
-                        (this.lineationItemWidth =
-                          this.lineationItemWidth >= 40.5
-                            ? this.lineationItemWidth
-                            : 40.5),
-                        (this.startAngle =
-                          this.startAngle < 0
-                            ? parseInt(this.startAngle)
-                            : 0),
-                        (this.endAngle =
-                          this.endAngle > 0 ? parseInt(this.endAngle) : 0),
-                        (this.gapAngle =
-                          this.gapAngle > 0 ? parseInt(this.gapAngle) : 3),
-                        (this.endAngle - this.startAngle) % this.gapAngle !=
-                        0 &&
-                        (this.endAngle =
-                          Math.ceil(
-                            (this.endAngle - this.startAngle) /
-                            this.gapAngle
-                          ) *
-                          this.gapAngle +
-                          this.startAngle),
-                        (this.lineationWidth =
-                          this.lineationItemWidth *
-                          ((this.endAngle - this.startAngle) / this.gapAngle +
-                            1)),
-                        (this.$cropRotate = document.querySelector(
-                          "#" + this.id + " .crop-rotate"
-                        )),
-                        (this.$lineation = document.querySelector(
-                          "#" + this.id + " .lineation"
-                        )),
-                        (this.$rotateCurrent = document.querySelector(
-                          "#" + this.id + " .current"
-                        ));
+                        (this.startAngle = null != t.startAngle ? t.startAngle : -90),
+                        (this.endAngle = null != t.endAngle ? t.endAngle : 90),
+                        (this.gapAngle = null != t.gapAngle ? t.gapAngle : 10),
+                        (this.lineationItemWidth = null != t.lineationItemWidth ? t.lineationItemWidth : 40.5),
+                        (this.lineationItemWidth = this.lineationItemWidth >= 40.5 ? this.lineationItemWidth : 40.5),
+                        (this.startAngle = this.startAngle < 0 ? parseInt(this.startAngle) : 0),
+                        (this.endAngle = this.endAngle > 0 ? parseInt(this.endAngle) : 0),
+                        (this.gapAngle = this.gapAngle > 0 ? parseInt(this.gapAngle) : 3),
+                        (this.endAngle - this.startAngle) % this.gapAngle != 0 &&
+                        (this.endAngle = Math.ceil(
+                          (this.endAngle - this.startAngle) / this.gapAngle
+                        ) *
+                          this.gapAngle + this.startAngle), (this.lineationWidth = this.lineationItemWidth *
+                            ((this.endAngle - this.startAngle) / this.gapAngle + 1)),
+                        (this.$cropRotate = document.querySelector("#" + this.id + " .crop-rotate")),
+                        (this.$lineation = document.querySelector("#" + this.id + " .lineation")),
+                        (this.$rotateCurrent = document.querySelector("#" + this.id + " .current"));
                       var e = window.getComputedStyle(this.$cropRotate);
-                      (this.rotateWidth = parseFloat(
-                        e.getPropertyValue("width")
-                      )),
+                      (this.rotateWidth = parseFloat(e.getPropertyValue("width"))),
                         (this._baseMoveX = -(
-                          (this.lineationWidth *
-                            (0 - this.startAngle + this.gapAngle / 2)) /
-                          (this.endAngle -
-                            this.startAngle +
-                            this.gapAngle) -
-                          this.rotateWidth / 2
-                        ));
+                          (this.lineationWidth * (0 - this.startAngle + this.gapAngle / 2)) /
+                          (this.endAngle - this.startAngle + this.gapAngle) - this.rotateWidth / 2));
                       var i = this.rotateAngle - this._baseAngle;
                       (this._curMoveX =
                         (i * this.lineationWidth) /
@@ -990,47 +908,32 @@
                         (this.$cropCover = document.querySelector(
                           "#" + this.id + " .crop-cover"
                         )),
-                        (this.cropCoverContext =
-                          this.$cropCover.getContext("2d")),
-                        (this.$cropCover.width =
-                          this.maskViewSize.width * window.devicePixelRatio),
-                        (this.$cropCover.height =
-                          this.maskViewSize.height * window.devicePixelRatio);
+                        (this.cropCoverContext = this.$cropCover.getContext("2d")),
+                        (this.$cropCover.width = this.maskViewSize.width * window.devicePixelRatio),
+                        (this.$cropCover.height = this.maskViewSize.height * window.devicePixelRatio);
                     }),
                     (s.prototype.initBox = function (t) {
                       (this.size = t.size),
                         (this.positionOffset =
-                          null != t.positionOffset
-                            ? t.positionOffset
-                            : { top: 0, left: 0 }),
+                          null != t.positionOffset ? t.positionOffset : { top: 0, left: 0 }),
                         (this.cropSizePercent =
-                          null != t.cropSizePercent
-                            ? t.cropSizePercent
-                            : 0.5);
+                          null != t.cropSizePercent ? t.cropSizePercent : 0.5);
                     }),
                     (s.prototype.updateBox = function (t) {
                       this.initBox(t),
                         (this.times =
                           this.size.width / this.maskViewSize.width >
                             this.size.height / this.maskViewSize.height
-                            ? this.size.width /
-                            this.maskViewSize.width /
-                            this.cropSizePercent
-                            : this.size.height /
-                            this.maskViewSize.height /
-                            this.cropSizePercent),
+                            ? this.size.width / this.maskViewSize.width / this.cropSizePercent
+                            : this.size.height / this.maskViewSize.height / this.cropSizePercent),
                         (this.cropRect = {
                           width: this.size.width / this.times,
                           height: this.size.height / this.times,
                         }),
                         (this.cropRect.left =
-                          (this.maskViewSize.width - this.cropRect.width) /
-                          2 -
-                          this.positionOffset.left),
+                          (this.maskViewSize.width - this.cropRect.width) / 2 - this.positionOffset.left),
                         (this.cropRect.top =
-                          (this.maskViewSize.height - this.cropRect.height) /
-                          2 -
-                          this.positionOffset.top),
+                          (this.maskViewSize.height - this.cropRect.height) / 2 - this.positionOffset.top),
                         (this.initCropRect = {
                           left: this.cropRect.left,
                           top: this.cropRect.top,
@@ -1038,32 +941,18 @@
                           height: this.cropRect.height,
                         }),
                         (this.cropPoints = this.rectToPoints(this.cropRect)),
-                        (this.cropCenter = this.getPointsCenter(
-                          this.cropPoints
-                        )),
+                        (this.cropCenter = this.getPointsCenter(this.cropPoints)),
                         this.borderDraw(this.$cropCover),
                         this.coverDraw(this.$cropCover),
                         this.transform(!1, !0);
                     }),
                     (s.prototype.getControlPoints = function (t) {
-                      return t.touches
-                        ? t.touches
-                        : [{ clientX: t.clientX, clientY: t.clientY }];
+                      return t.touches ? t.touches : [{ clientX: t.clientX, clientY: t.clientY }];
                     }),
                     (s.prototype.getControlEvents = function () {
                       return this.isSupportTouch
-                        ? {
-                          start: "touchstart",
-                          move: "touchmove",
-                          end: "touchend",
-                          cancel: "touchcancel",
-                        }
-                        : {
-                          start: "mousedown",
-                          move: "mousemove",
-                          end: "mouseup",
-                          cancel: "mouseleave",
-                        };
+                        ? { start: "touchstart", move: "touchmove", end: "touchend", cancel: "touchcancel", }
+                        : { start: "mousedown", move: "mousemove", end: "mouseup", cancel: "mouseleave", };
                     }),
                     (s.prototype.construct = function () {
                       var t = "";
@@ -1074,14 +963,12 @@
                         (t += "</div>"),
                         this.rotateSlider
                           ? (t += '<div class="crop-rotate">')
-                          : (t +=
-                            '<div class="crop-rotate" style="visibility:hidden;">'),
+                          : (t += '<div class="crop-rotate" style="visibility:hidden;">'),
                         (t += '<ul class="lineation">'),
                         (t += "</ul>"),
                         (t += '<div class="current"></div>'),
                         (t += "</div>"),
-                        (t +=
-                          '<div class="crop-btns" style="visibility:hidden;"></div>'),
+                        (t += '<div class="crop-btns" style="visibility:hidden;"></div>'),
                         (t += "</div>"),
                         (this.$target = document.createElement("div")),
                         (this.$target.id = this.id),
@@ -1093,12 +980,9 @@
                         this.$container.appendChild(this.$target);
                     }),
                     (s.prototype.defaultBorderDraw = function (t) {
-                      var e = this.borderWidth,
-                        i = this.boldCornerWidth,
-                        n = this.boldCornerLen;
+                      var e = this.borderWidth, i = this.boldCornerWidth, n = this.boldCornerLen;
                       n = n >= 2 * e ? n : 2 * e;
-                      var r = t.width,
-                        o = t.height;
+                      var r = t.width, o = t.height;
                       this.cropCoverContext.clearRect(0, 0, r, o),
                         (this.cropCoverContext.fillStyle = this.coverColor),
                         this.cropCoverContext.fillRect(0, 0, r, o);
@@ -1106,41 +990,16 @@
                         left: this.cropRect.left * window.devicePixelRatio,
                         top: this.cropRect.top * window.devicePixelRatio,
                         width: this.cropRect.width * window.devicePixelRatio,
-                        height:
-                          this.cropRect.height * window.devicePixelRatio,
+                        height: this.cropRect.height * window.devicePixelRatio,
                       };
                       (this.cropCoverContext.fillStyle = this.borderColor),
-                        this.cropCoverContext.fillRect(
-                          s.left,
-                          s.top,
-                          s.width,
-                          s.height
-                        ),
+                        this.cropCoverContext.fillRect(s.left, s.top, s.width, s.height),
                         this.boldCornerLen > 0 &&
-                        (this.cropCoverContext.fillRect(
-                          s.left - i,
-                          s.top - i,
-                          n,
-                          n
-                        ),
+                        (this.cropCoverContext.fillRect(s.left - i, s.top - i, n, n),
+                          this.cropCoverContext.fillRect(s.left + s.width - n + i, s.top - i, n, n),
+                          this.cropCoverContext.fillRect(s.left - i, s.top + s.height - n + i, n, n),
                           this.cropCoverContext.fillRect(
-                            s.left + s.width - n + i,
-                            s.top - i,
-                            n,
-                            n
-                          ),
-                          this.cropCoverContext.fillRect(
-                            s.left - i,
-                            s.top + s.height - n + i,
-                            n,
-                            n
-                          ),
-                          this.cropCoverContext.fillRect(
-                            s.left + s.width - n + i,
-                            s.top + s.height - n + i,
-                            n,
-                            n
-                          ));
+                            s.left + s.width - n + i, s.top + s.height - n + i, n, n));
                       var a = document.createElement("canvas");
                       (a.width = s.width), (a.height = 24);
                       var c = a.getContext("2d");
@@ -1148,49 +1007,24 @@
                         (c.fillStyle = this.borderColor),
                         (c.textBaseline = "middle"),
                         (c.textAlign = "center");
-                      var h = parseInt(
-                        (this.size.width * this.cropRect.width) /
-                        this.initCropRect.width
-                      ),
+                      var h = parseInt((this.size.width * this.cropRect.width) / this.initCropRect.width),
                         l = parseInt(
-                          (this.size.height * this.cropRect.height) /
-                          this.initCropRect.height
-                        );
+                          (this.size.height * this.cropRect.height) / this.initCropRect.height);
                       c.fillText(h + " x " + l, a.width / 2, a.height / 2),
                         this.cropCoverContext.drawImage(
-                          a,
-                          0,
-                          0,
-                          a.width,
-                          a.height,
-                          s.left,
-                          s.top - 24 - 2 * this.boldCornerWidth,
-                          a.width,
-                          a.height
-                        ),
+                          a, 0, 0, a.width, a.height, s.left,
+                          s.top - 24 - 2 * this.boldCornerWidth, a.width, a.height),
                         this.cropCoverContext.clearRect(
-                          s.left + e,
-                          s.top + e,
-                          s.width - 2 * e,
-                          s.height - 2 * e
-                        );
+                          s.left + e, s.top + e, s.width - 2 * e, s.height - 2 * e);
                     }),
                     (s.prototype.init = function () {
-                      var t = this.contentWidth / 2,
-                        e = this.contentHeight / 2;
+                      var t = this.contentWidth / 2, e = this.contentHeight / 2;
                       (this.initContentPoints = [
-                        { x: -t, y: e },
-                        { x: t, y: e },
-                        { x: t, y: -e },
-                        { x: -t, y: -e },
-                      ]),
+                        { x: -t, y: e }, { x: t, y: e }, { x: t, y: -e }, { x: -t, y: -e },]),
                         (this.contentPoints = this.initContentPoints.slice()),
-                        this.size.width / this.size.height >
-                          this.contentWidth / this.contentHeight
-                          ? (this.initScale =
-                            this.size.width / this.contentWidth)
-                          : (this.initScale =
-                            this.size.height / this.contentHeight),
+                        this.size.width / this.size.height > this.contentWidth / this.contentHeight
+                          ? (this.initScale = this.size.width / this.contentWidth)
+                          : (this.initScale = this.size.height / this.contentHeight),
                         this.reset();
                     }),
                     (s.prototype.reset = function () {
@@ -1202,16 +1036,12 @@
                         (this.rotateAngle = 0),
                         (this._curMoveX = this._baseMoveX),
                         (this._changedX = 0),
-                        (this.$lineation.style[r] =
-                          "translateX(" + this._baseMoveX + "px)"),
+                        (this.$lineation.style[r] = "translateX(" + this._baseMoveX + "px)"),
                         (this.scaleTimes = this.initScale),
                         this.updateBox({
                           positionOffset: this.positionOffset,
                           cropSizePercent: this.cropSizePercent,
-                          size: {
-                            width: this.initSize.width,
-                            height: this.initSize.height,
-                          },
+                          size: { width: this.initSize.width, height: this.initSize.height, },
                         }),
                         this.endControl();
                     }),
@@ -1277,8 +1107,7 @@
                         (this._curMoveX = this._baseMoveX),
                         (this._changedX = 0),
                         (this._rotateScale = 1),
-                        (this.$lineation.style[r] =
-                          "translateX(" + this._baseMoveX + "px)"),
+                        (this.$lineation.style[r] = "translateX(" + this._baseMoveX + "px)"),
                         this.transform(!1, !0),
                         this.endControl();
                     }),
@@ -1293,39 +1122,22 @@
                         c = this.cropRect.top - this.cursorHoverWidth,
                         h = this.cropRect.width + 2 * this.cursorHoverWidth,
                         l = this.cropRect.height + 2 * this.cursorHoverWidth;
-                      e >= a &&
-                        e <= a + h &&
-                        i >= c &&
-                        i <= l + c &&
+                      e >= a && e <= a + h && i >= c && i <= l + c &&
                         !(e >= n && e <= n + o && i >= r && i <= s + r)
-                        ? e <= a + this.boldCornerLen &&
-                          i <= c + this.boldCornerLen
-                          ? ((this.$cropCover.style.cursor = "nwse-resize"),
-                            (this._moveCursor = "crop_leftTop"))
-                          : e <= a + this.boldCornerLen &&
-                            i >= l + c - this.boldCornerLen
-                            ? ((this.$cropCover.style.cursor = "nesw-resize"),
-                              (this._moveCursor = "crop_leftBottom"))
-                            : e >= h + a - this.boldCornerLen &&
-                              i <= c + this.boldCornerLen
-                              ? ((this.$cropCover.style.cursor = "nesw-resize"),
-                                (this._moveCursor = "crop_rightTop"))
-                              : e >= h + a - this.boldCornerLen &&
-                                i >= l + c - this.boldCornerLen
-                                ? ((this.$cropCover.style.cursor = "nwse-resize"),
-                                  (this._moveCursor = "crop_rightBottom"))
-                                : i <= c + this.boldCornerLen &&
-                                  !this.isFixedAspectRatio
-                                  ? ((this.$cropCover.style.cursor = "ns-resize"),
-                                    (this._moveCursor = "crop_top"))
-                                  : i >= l + c - this.boldCornerLen &&
-                                    !this.isFixedAspectRatio
-                                    ? ((this.$cropCover.style.cursor = "ns-resize"),
-                                      (this._moveCursor = "crop_bottom"))
-                                    : e <= a + this.boldCornerLen &&
-                                      !this.isFixedAspectRatio
-                                      ? ((this.$cropCover.style.cursor = "ew-resize"),
-                                        (this._moveCursor = "crop_left"))
+                        ? e <= a + this.boldCornerLen && i <= c + this.boldCornerLen
+                          ? ((this.$cropCover.style.cursor = "nwse-resize"), (this._moveCursor = "crop_leftTop"))
+                          : e <= a + this.boldCornerLen && i >= l + c - this.boldCornerLen
+                            ? ((this.$cropCover.style.cursor = "nesw-resize"), (this._moveCursor = "crop_leftBottom"))
+                            : e >= h + a - this.boldCornerLen && i <= c + this.boldCornerLen
+                              ? ((this.$cropCover.style.cursor = "nesw-resize"), (this._moveCursor = "crop_rightTop"))
+                              : e >= h + a - this.boldCornerLen && i >= l + c - this.boldCornerLen
+                                ? ((this.$cropCover.style.cursor = "nwse-resize"), (this._moveCursor = "crop_rightBottom"))
+                                : i <= c + this.boldCornerLen && !this.isFixedAspectRatio
+                                  ? ((this.$cropCover.style.cursor = "ns-resize"), (this._moveCursor = "crop_top"))
+                                  : i >= l + c - this.boldCornerLen && !this.isFixedAspectRatio
+                                    ? ((this.$cropCover.style.cursor = "ns-resize"), (this._moveCursor = "crop_bottom"))
+                                    : e <= a + this.boldCornerLen && !this.isFixedAspectRatio
+                                      ? ((this.$cropCover.style.cursor = "ew-resize"), (this._moveCursor = "crop_left"))
                                       : e >= h + a - this.boldCornerLen &&
                                       !this.isFixedAspectRatio &&
                                       ((this.$cropCover.style.cursor = "ew-resize"),
@@ -1341,19 +1153,13 @@
                         o = { clientX: e.clientX, clientY: e.clientY };
                       if (
                         !(
-                          (-1 == n.indexOf("left") &&
-                            -1 == n.indexOf("right")) ||
-                          (-1 == n.indexOf("top") &&
-                            -1 == n.indexOf("bottom"))
+                          (-1 == n.indexOf("left") && -1 == n.indexOf("right")) ||
+                          (-1 == n.indexOf("top") && -1 == n.indexOf("bottom"))
                         )
                       ) {
                         var s = 0;
-                        s = ["crop_lefttop", "crop_rightbottom"].includes(n)
-                          ? 1
-                          : -1;
-                        var a =
-                          (r * this.initCropRect.height) /
-                          this.initCropRect.width;
+                        s = ["crop_lefttop", "crop_rightbottom"].includes(n) ? 1 : -1;
+                        var a = (r * this.initCropRect.height) / this.initCropRect.width;
                         o.clientY = i.clientY + a * s;
                       }
                       -1 != n.indexOf("left") &&
@@ -1363,8 +1169,7 @@
                             this.initCropRect.width - (o.clientX - i.clientX))),
                         -1 != n.indexOf("right") &&
                         (this.cropRect.width =
-                          this.initCropRect.width +
-                          (o.clientX - i.clientX)),
+                          this.initCropRect.width + (o.clientX - i.clientX)),
                         -1 != n.indexOf("top") &&
                         ((this.cropRect.top =
                           this.initCropRect.top + (o.clientY - i.clientY)),
@@ -1373,8 +1178,7 @@
                             (o.clientY - i.clientY))),
                         -1 != n.indexOf("bottom") &&
                         (this.cropRect.height =
-                          this.initCropRect.height +
-                          (o.clientY - i.clientY)),
+                          this.initCropRect.height + (o.clientY - i.clientY)),
                         this.cropRect.width <= this.boldCornerLen &&
                         (this.cropRect.width = this.boldCornerLen),
                         this.cropRect.height <= this.boldCornerLen &&
@@ -1383,8 +1187,7 @@
                         this.coverDraw(this.$cropCover);
                     }),
                     (s.prototype.bindEvent = function () {
-                      var t = this,
-                        e = this.getControlEvents();
+                      var t = this, e = this.getControlEvents();
                       t.$cropRotate.addEventListener(e.start, function (e) {
                         var i = t.getControlPoints(e);
                         t.startControl(i);
@@ -1392,10 +1195,7 @@
                         t.$cropRotate.addEventListener(e.move, function (e) {
                           var i = t.getControlPoints(e);
                           if (
-                            t._downPoints &&
-                            t._downPoints.length > 0 &&
-                            !t._multiPoint
-                          ) {
+                            t._downPoints && t._downPoints.length > 0 && !t._multiPoint) {
                             var n = i[0].clientX - t._downPoints[0].clientX,
                               o = t._curMoveX + n;
                             if (
@@ -1422,85 +1222,52 @@
                           }
                           e.stopPropagation(), e.preventDefault();
                         }),
-                        t.$cropRotate.addEventListener(
-                          e.end,
-                          t.endControl.bind(t)
-                        ),
-                        t.$cropRotate.addEventListener(
-                          e.cancel,
-                          t.endControl.bind(t)
-                        );
+                        t.$cropRotate.addEventListener(e.end, t.endControl.bind(t)),
+                        t.$cropRotate.addEventListener(e.cancel, t.endControl.bind(t));
                       var i = t.isSupportTouch ? t.$container : t.$cropMask;
                       i.addEventListener(e.start, function (e) {
                         var i = t.getControlPoints(e);
-                        if (
-                          (t.startControl(i),
-                            (t._multiPoint = !1),
-                            t.moveCursor(i),
-                            t._downPoints && t._downPoints.length >= 2)
-                        ) {
+                        if ((t.startControl(i),
+                          (t._multiPoint = !1),
+                          t.moveCursor(i),
+                          t._downPoints && t._downPoints.length >= 2)) {
                           t._multiPoint = !0;
                           var n = {
-                            clientX:
-                              (t._downPoints[0].clientX +
-                                t._downPoints[1].clientX) /
-                              2,
-                            clientY:
-                              (t._downPoints[0].clientY +
-                                t._downPoints[1].clientY) /
-                              2,
+                            clientX: (t._downPoints[0].clientX + t._downPoints[1].clientX) / 2,
+                            clientY: (t._downPoints[0].clientY + t._downPoints[1].clientY) / 2,
                           };
                           (t.fingerLen = Math.sqrt(
-                            Math.pow(
-                              t._downPoints[0].clientX -
-                              t._downPoints[1].clientX,
-                              2
-                            ) +
-                            Math.pow(
-                              t._downPoints[0].clientY -
-                              t._downPoints[1].clientY,
-                              2
-                            )
+                            Math.pow(t._downPoints[0].clientX - t._downPoints[1].clientX, 2) +
+                            Math.pow(t._downPoints[0].clientY - t._downPoints[1].clientY, 2)
                           )),
                             (t.fingerScale = 1),
-                            (t.fingerCenter = {
-                              x: n.clientX - t.maskViewSize.width / 2,
-                              y: t.maskViewSize.height / 2 - n.clientY,
-                            });
-                        } else t._moveCursor && -1 != t._moveCursor.indexOf("crop_") && (t._moveCursorAction = t._moveCursor);
+                            (t.fingerCenter =
+                              { x: n.clientX - t.maskViewSize.width / 2, y: t.maskViewSize.height / 2 - n.clientY, });
+                        } else
+                          t._moveCursor && -1 !=
+                            t._moveCursor.indexOf("crop_") && (t._moveCursorAction = t._moveCursor);
                       });
-                      var n = !!t.passiveSupported && {
-                        passive: !1,
-                        capture: !1,
-                      };
-                      i.addEventListener(
-                        e.move,
-                        function (e) {
-                          var i = t.getControlPoints(e);
-                          if (t._downPoints && t._downPoints.length > 0)
-                            if (t._multiPoint) {
-                              var n =
-                                Math.sqrt(
-                                  Math.pow(i[0].clientX - i[1].clientX, 2) +
-                                  Math.pow(i[0].clientY - i[1].clientY, 2)
-                                ) / t.fingerLen;
-                              t.scaleTimes =
-                                (t.scaleTimes / t.fingerScale) * n;
-                              var r = t.getScaleTranslate(
-                                n / t.fingerScale,
-                                t.fingerCenter
-                              );
-                              (t._contentCurMoveX -= r.translateX),
-                                (t._contentCurMoveY += r.translateY),
-                                (t.fingerScale = n),
-                                t.transform(!1, !0);
-                            } else
-                              t._moveCursorAction
-                                ? t.cropMove(i)
-                                : t.contentMove(i);
-                          else t.moveCursor(i);
-                          t.visible && e.preventDefault();
-                        },
+                      var n = !!t.passiveSupported && { passive: !1, capture: !1, };
+                      i.addEventListener(e.move, function (e) {
+                        var i = t.getControlPoints(e);
+                        if (t._downPoints && t._downPoints.length > 0)
+                          if (t._multiPoint) {
+                            var n =
+                              Math.sqrt(
+                                Math.pow(i[0].clientX - i[1].clientX, 2) +
+                                Math.pow(i[0].clientY - i[1].clientY, 2)
+                              ) / t.fingerLen;
+                            t.scaleTimes = (t.scaleTimes / t.fingerScale) * n;
+                            var r = t.getScaleTranslate(n / t.fingerScale, t.fingerCenter);
+                            (t._contentCurMoveX -= r.translateX),
+                              (t._contentCurMoveY += r.translateY),
+                              (t.fingerScale = n),
+                              t.transform(!1, !0);
+                          } else
+                            t._moveCursorAction ? t.cropMove(i) : t.contentMove(i);
+                        else t.moveCursor(i);
+                        t.visible && e.preventDefault();
+                      },
                         n
                       ),
                         i.addEventListener(e.end, t.endControl.bind(t)),
@@ -1509,10 +1276,8 @@
                           t._wheelTimeout || t.startControl(),
                             e.preventDefault(),
                             e.wheelDelta > 0
-                              ? (t.scaleTimes =
-                                t.scaleTimes * (e.wheelDelta / 12e3 + 1))
-                              : (t.scaleTimes =
-                                t.scaleTimes / (1 - e.wheelDelta / 12e3)),
+                              ? (t.scaleTimes = t.scaleTimes * (e.wheelDelta / 12e3 + 1))
+                              : (t.scaleTimes = t.scaleTimes / (1 - e.wheelDelta / 12e3)),
                             t.transform(!1, !0),
                             t._wheelTimeout && clearTimeout(t._wheelTimeout),
                             (t._wheelTimeout = setTimeout(function () {
@@ -1526,8 +1291,7 @@
                         n = this.getPointsCenter(this.contentPoints),
                         r = 0;
                         r < this.contentPoints.length;
-                        r++
-                      ) {
+                        r++) {
                         var o = this.contentPoints[r];
                         i.push({
                           x: o.x * t - e.x * (t - 1),
@@ -1566,8 +1330,7 @@
                     (s.prototype.transformCoordinates = function () {
                       this.$cropContent &&
                         this.$cropMask.removeChild(this.$cropContent),
-                        (this.$cropContent =
-                          document.createElement("canvas")),
+                        (this.$cropContent = document.createElement("canvas")),
                         (this.$cropContent.width = this.contentWidth),
                         (this.$cropContent.height = this.contentHeight);
                       var t = this.$cropContent.getContext("2d"),
@@ -1617,71 +1380,37 @@
                         n = this.size.width,
                         r = this.size.height,
                         o = 1;
-                      (e < n || i < r) &&
-                        (n / e > r / i
-                          ? ((i *= o = n / e), (e = n))
-                          : ((e *= o = r / i), (i = r)));
-                      var s = { x: e / 2, y: i / 2 },
-                        a = document.createElement("canvas");
+                      (e < n || i < r) && (n / e > r / i
+                        ? ((i *= o = n / e), (e = n))
+                        : ((e *= o = r / i), (i = r)));
+                      var s = { x: e / 2, y: i / 2 }, a = document.createElement("canvas");
                       (a.width = e), (a.height = i);
                       var c = a.getContext("2d");
                       c.translate(s.x, s.y),
                         c.scale((t * this.times) / o, (t * this.times) / o),
                         c.translate(
-                          ((this._contentCurMoveX +
-                            this.positionOffset.left) /
-                            t) *
-                          o,
-                          ((this._contentCurMoveY + this.positionOffset.top) /
-                            t) *
-                          o
-                        ),
+                          ((this._contentCurMoveX + this.positionOffset.left) / t) * o,
+                          ((this._contentCurMoveY + this.positionOffset.top) / t) * o),
                         c.rotate((this.rotateAngle / 180) * Math.PI),
                         c.translate(-s.x, -s.y),
                         c.drawImage(this.$cropContent, 0, 0, e, i);
                       var h = document.createElement("canvas");
-                      (h.width = n),
-                        (h.height = r),
-                        h
-                          .getContext("2d")
-                          .drawImage(
-                            a,
-                            (e - n) / 2,
-                            (i - r) / 2,
-                            n,
-                            r,
-                            0,
-                            0,
-                            n,
-                            r
-                          ),
+                      (h.width = n), (h.height = r), h.getContext("2d")
+                        .drawImage(a, (e - n) / 2, (i - r) / 2, n, r, 0, 0, n, r),
                         (this.$resultCanvas = h);
                     }),
                     (s.prototype.endControl = function () {
                       if (this._isControl) {
                         var t = this;
-                        if (
-                          ((this._downPoints = []), this._moveCursorAction)
-                        ) {
+                        if (((this._downPoints = []), this._moveCursorAction)) {
                           const n = {
-                            width:
-                              (this.cropRect.width /
-                                this.initCropRect.width) *
-                              this.size.width,
-                            height:
-                              (this.cropRect.height /
-                                this.initCropRect.height) *
-                              this.size.height,
+                            width: (this.cropRect.width / this.initCropRect.width) * this.size.width,
+                            height: (this.cropRect.height / this.initCropRect.height) * this.size.height,
                           },
                             r =
-                              n.width / this.maskViewSize.width >
-                                n.height / this.maskViewSize.height
-                                ? n.width /
-                                this.maskViewSize.width /
-                                this.cropSizePercent
-                                : n.height /
-                                this.maskViewSize.height /
-                                this.cropSizePercent;
+                              n.width / this.maskViewSize.width > n.height / this.maskViewSize.height
+                                ? n.width / this.maskViewSize.width / this.cropSizePercent
+                                : n.height / this.maskViewSize.height / this.cropSizePercent;
                           for (
                             var e = this.rectToPoints(this.cropRect),
                             i = this.getPointsCenter(e),
@@ -1696,62 +1425,34 @@
                                 y: e[a].y - this.cropPoints[a].y,
                               })
                             );
-                          for (
-                            var c = [0], h = s[0], l = 1;
-                            l < s.length;
-                            l++
-                          )
-                            s[l] < h
-                              ? ((h = s[l]), (c = [l]))
-                              : s[l] == h && c.push(l);
+                          for (var c = [0], h = s[0], l = 1; l < s.length; l++)
+                            s[l] < h ? ((h = s[l]), (c = [l])) : s[l] == h && c.push(l);
                           var u = {
                             x: this.cropPoints[c[0]].x,
                             y: this.cropPoints[c[0]].y,
                           };
-                          2 == c.length &&
-                            ((u.x =
-                              (this.cropPoints[c[0]].x +
-                                this.cropPoints[c[1]].x) /
-                              2),
-                              (u.y =
-                                (this.cropPoints[c[0]].y +
-                                  this.cropPoints[c[1]].y) /
-                                2));
+                          2 == c.length && ((u.x =
+                            (this.cropPoints[c[0]].x + this.cropPoints[c[1]].x) / 2),
+                            (u.y = (this.cropPoints[c[0]].y + this.cropPoints[c[1]].y) / 2));
                           var p = this._moveCursorAction.toLowerCase();
                           this._moveCursorAction = null;
-                          var d =
-                            -1 != p.indexOf("left") ||
-                            -1 != p.indexOf("right"),
-                            f =
-                              -1 != p.indexOf("top") ||
-                              -1 != p.indexOf("bottom"),
+                          var d = -1 != p.indexOf("left") || -1 != p.indexOf("right"),
+                            f = -1 != p.indexOf("top") || -1 != p.indexOf("bottom"),
                             g = d
                               ? this.initCropRect.width / this.cropRect.width
-                              : this.initCropRect.height /
-                              this.cropRect.height,
+                              : this.initCropRect.height / this.cropRect.height,
                             v = t.getScaleTranslate(g, { x: u.x, y: u.y });
                           d && f
-                            ? ((this._contentCurMoveX -= v.translateX),
-                              (this._contentCurMoveY += v.translateY))
+                            ? ((this._contentCurMoveX -= v.translateX), (this._contentCurMoveY += v.translateY))
                             : d
-                              ? 0 ==
-                                Math.abs(this.times / r - g).toFixed(
-                                  this._precision
-                                )
-                                ? (this._contentCurMoveX -=
-                                  ((v.translateX * g) / this.times) * r)
-                                : ((this._contentCurMoveX -=
-                                  i.x - this.positionOffset.left),
+                              ? 0 == Math.abs(this.times / r - g).toFixed(this._precision)
+                                ? (this._contentCurMoveX -= ((v.translateX * g) / this.times) * r)
+                                : ((this._contentCurMoveX -= i.x - this.positionOffset.left),
                                   (this._contentCurMoveX *= this.times / r))
                               : f &&
-                              (0 ==
-                                Math.abs(this.times / r - g).toFixed(
-                                  this._precision
-                                )
-                                ? (this._contentCurMoveY +=
-                                  ((v.translateY * g) / this.times) * r)
-                                : ((this._contentCurMoveY +=
-                                  i.y - this.positionOffset.top),
+                              (0 == Math.abs(this.times / r - g).toFixed(this._precision)
+                                ? (this._contentCurMoveY += ((v.translateY * g) / this.times) * r)
+                                : ((this._contentCurMoveY += i.y - this.positionOffset.top),
                                   (this._contentCurMoveY *= this.times / r))),
                             this.updateBox({
                               positionOffset: this.positionOffset,
@@ -1759,16 +1460,9 @@
                               size: { width: n.width, height: n.height },
                             });
                         }
-                        if (
-                          this.$cropContent &&
-                          !this.isWholeCover(
-                            this.contentPoints,
-                            this.cropPoints
-                          )
+                        if (this.$cropContent && !this.isWholeCover(this.contentPoints, this.cropPoints)
                         ) {
-                          var m =
-                            (this.scaleTimes / this.times) *
-                            this._rotateScale,
+                          var m = (this.scaleTimes / this.times) * this._rotateScale,
                             y = "";
                           (y += " scale(" + m + ")"),
                             (y +=
@@ -1789,8 +1483,7 @@
                               )),
                               this.debug)
                           ) {
-                            this.$cropContent.style[o] =
-                              "transform .5s linear";
+                            this.$cropContent.style[o] = "transform .5s linear";
                             var b = C.indexOf(y) + y.length,
                               w = C.substring(b, C.length).trim().split(" "),
                               P = 0,
@@ -1799,14 +1492,11 @@
                               this.$cropContent.addEventListener(
                                 n,
                                 function () {
-                                  ++P < C.length &&
-                                    ((S += w[P]),
-                                      (t.$cropContent.style[r] = S));
+                                  ++P < C.length && ((S += w[P]), (t.$cropContent.style[r] = S));
                                 }
                               );
                           } else
-                            this.$cropContent.style[r] =
-                              this._initTransform + C;
+                            this.$cropContent.style[r] = this._initTransform + C;
                         }
                         this._isControl = !1;
                       }
@@ -1843,8 +1533,7 @@
                     (s.prototype.transform = function (t, e) {
                       if (this.$cropContent) {
                         var i =
-                          (this.scaleTimes / this.times) *
-                          this._rotateScale,
+                          (this.scaleTimes / this.times) * this._rotateScale,
                           n = "";
                         if (
                           ((n += " scale(" + i + ")"),
@@ -1877,8 +1566,7 @@
                             },
                             p = Math.abs(c) / Math.abs(h);
                           a > 1
-                            ? ((this._rotateScale = this._rotateScale * a),
-                              (i *= a))
+                            ? ((this._rotateScale = this._rotateScale * a), (i *= a))
                             : this.vecLen(u) < 1 &&
                             p > 0 &&
                             (a < 1 - p && (a = 1 - p),
@@ -1927,10 +1615,7 @@
                         : 1 + (o - s) / s;
                     }),
                     (s.prototype.getCoverTransform = function (t, e) {
-                      var i = this.getCoveRect(
-                        this.cropPoints,
-                        this.rotateAngle
-                      );
+                      var i = this.getCoveRect(this.cropPoints, this.rotateAngle);
                       e = e || !1;
                       var n = 1,
                         r = 1,
@@ -1958,11 +1643,7 @@
                       var l =
                         (n = n < 1 ? 1 : n) > (r = r < 1 ? 1 : r) ? n : r;
                       if (e && l > 1) return t;
-                      for (
-                        var u = [], p = 0;
-                        p < this.contentPoints.length;
-                        p++
-                      )
+                      for (var u = [], p = 0; p < this.contentPoints.length; p++)
                         u.push({
                           x: this.contentPoints[p].x,
                           y: this.contentPoints[p].y,
@@ -1974,16 +1655,12 @@
                             "scaleY(-1)" + t,
                             this.initContentPoints
                           )));
-                      var d =
-                        (this.scaleTimes / this.times) * this._rotateScale,
+                      var d = (this.scaleTimes / this.times) * this._rotateScale,
                         f = 0,
                         g = this,
                         v = [];
                       do {
-                        if (
-                          (v = this.getOutDetails(this.cropPoints, u))
-                            .length > 0
-                        ) {
+                        if ((v = this.getOutDetails(this.cropPoints, u)).length > 0) {
                           f++,
                             v.sort(function (t, e) {
                               var i = g.vecLen(t.iv),
@@ -1999,20 +1676,15 @@
                             (x =
                               Math.abs(h) < 90
                                 ? -C * m.uOver
-                                : C * m.uOver) &&
-                            (t += " translateY(" + x / d + "px)");
+                                : C * m.uOver) && (t += " translateY(" + x / d + "px)");
                           var b = this.vecAngle(y.right, y.rproj),
                             w = this.vecLen(y.rproj),
                             P = 0;
-                          if (
-                            (0 !=
-                              (P =
-                                Math.abs(b) < 90
-                                  ? w * m.rOver
-                                  : -w * m.rOver) &&
-                              (t += " translateX(" + P / d + "px)"),
-                              0 != P || 0 != x)
-                          )
+                          if ((0 !=
+                            (P = Math.abs(b) < 90
+                              ? w * m.rOver
+                              : -w * m.rOver) && (t += " translateX(" + P / d + "px)"),
+                            0 != P || 0 != x))
                             for (p = 0; p < u.length; p++)
                               (u[p].x = u[p].x + m.iv.x),
                                 (u[p].y = u[p].y + m.iv.y);
@@ -2040,14 +1712,7 @@
                             ((p = (h - l) / h),
                               (s.x += o.rproj.x * p),
                               (s.y += o.rproj.y * p)),
-                            i.push({
-                              x: r.x,
-                              y: r.y,
-                              iv: s,
-                              uOver: u,
-                              rOver: p,
-                              pcv: o,
-                            });
+                            i.push({ x: r.x, y: r.y, iv: s, uOver: u, rOver: p, pcv: o, });
                         }
                       }
                       return i;
@@ -2165,10 +1830,7 @@
                         y: (n / Math.pow(i, 2)) * e.y,
                       };
                     }),
-                    (s.prototype.getPCVectorProjOnUpAndRight = function (
-                      t,
-                      e
-                    ) {
+                    (s.prototype.getPCVectorProjOnUpAndRight = function (t, e) {
                       var i = { x: e[1].x - e[2].x, y: e[1].y - e[2].y },
                         n = { x: e[1].x - e[0].x, y: e[1].y - e[0].y },
                         r = this.getPointsCenter(e),
@@ -2182,18 +1844,10 @@
                     }),
                     (s.prototype.isPointInRectCheckByLen = function (t, e) {
                       var i = this.getPCVectorProjOnUpAndRight(t, e),
-                        n = Math.round(
-                          this.vecLen(i.uproj) * this._precision
-                        ),
-                        r = Math.round(
-                          (this.vecLen(i.up) / 2) * this._precision
-                        ),
-                        o = Math.round(
-                          this.vecLen(i.rproj) * this._precision
-                        ),
-                        s = Math.round(
-                          (this.vecLen(i.right) / 2) * this._precision
-                        );
+                        n = Math.round(this.vecLen(i.uproj) * this._precision),
+                        r = Math.round((this.vecLen(i.up) / 2) * this._precision),
+                        o = Math.round(this.vecLen(i.rproj) * this._precision),
+                        s = Math.round((this.vecLen(i.right) / 2) * this._precision);
                       return n <= r && o <= s;
                     }),
                     (s.prototype.isPointInRectCheckByAngle = function (t, e) {
@@ -2236,9 +1890,7 @@
                       return { angle: i, vec: e[n], index: n };
                     }),
                     (s.prototype.vecAngle = function (t, e) {
-                      var i =
-                        (t.x * e.x + t.y * e.y) /
-                        (this.vecLen(t) * this.vecLen(e));
+                      var i = (t.x * e.x + t.y * e.y) / (this.vecLen(t) * this.vecLen(e));
                       return (
                         Math.abs(i) > 1 && (i = i > 0 ? 1 : -1),
                         (180 * Math.acos(i)) / Math.PI
@@ -2286,7 +1938,6 @@
                       var n = i.charAt(0).toUpperCase() + i.slice(1),
                       r = e.length;
                       r--;
-
                     ) {
                       var o = e[r] + n;
                       if (void 0 !== t[o]) return o;
