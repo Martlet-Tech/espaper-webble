@@ -16,24 +16,19 @@
 #include "yepd.h"
 #include <esp_jpeg_enc.h>
 
-#define BLACK 0x0
-#define WHITE 0x1
-#define YELLOW 0x2
-#define RED 0x3
-#define BLUE 0x5
-#define GREEN 0x6
-
 extern int display_debug;
 
 typedef void (*draw_px_func_t)(int16_t x, int16_t y, uint32_t color, void *fb);
+typedef void (*draw_px_index_func_t)(int16_t x, int16_t y, uint8_t color,
+				     void *fb);
 
-void draw_px_ug_port(int16_t x, int16_t y, uint32_t color, void *fb);
+/*void draw_px_ug_port(int16_t x, int16_t y, uint32_t color, void *fb);
 void draw_px_24bpp(int16_t x, int16_t y, uint32_t color, void *fb);
 
 void show_start_screen(YEPD *epd);
 
 void draw_qr_code(uint16_t x, uint16_t y, int width_t, int side,
-		  uint8_t *bitdata, void *fb, draw_px_func_t draw_px);
+		  uint8_t *bitdata, void *fb, draw_px_func_t draw_px);*/
 
 void atkinson_dither(uint8_t *image, uint8_t *output_index, int image_width,
 		     int image_height, uint8_t **palette, size_t palette_size);

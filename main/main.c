@@ -42,13 +42,12 @@
 static const char *TAG = "main";
 
 extern int display_debug;
+extern int show_qr;
 
 extern YEPD *epd; // global epd pointer, defined in bsp.c
 
 void bsp_gpio_initial(void);
 static esp_err_t save_qr_info(void);
-
-static void check_and_show_start_screen(void);
 
 void process_config(const char *file_path);
 
@@ -112,105 +111,27 @@ void app_main(void)
 
 static esp_err_t save_qr_info(void)
 {
-	char str_wifi[256] = { 0 };
-	char str_web[256] = { 0 };
+	char *qr_str = NULL;
 
-// save wifi info txt
-#if 1
-	bsp_create_wifi_qr_str(str_wifi);
-	ESP_LOGI(TAG, "wifi string(%d): %s", strlen(str_wifi), str_wifi);
+	// save wifi info txt
+	if (bsp_create_wifi_qr_str(&qr_str) == ESP_OK) {
+		ESP_LOGI(TAG, "wifi string(%d): %s", strlen(qr_str), qr_str);
 
-	write_to_sdcard(SDCARD_MOUNT_POINT "/wifiinfo.txt", str_wifi);
-	ESP_LOGI(TAG, "save wifi info OK");
-#endif
+		write_to_sdcard(SDCARD_MOUNT_POINT "/wifiinfo.txt", qr_str);
+		ESP_LOGI(TAG, "save wifi info OK");
+		free(qr_str); // 使用完毕后必须释放内存
+	}
 
-// save web info txt
-#if 1
-	// draw webside qr
-	bsp_create_web_qr_str(str_web);
-	ESP_LOGI(TAG, "web string(%d): %s", strlen(str_web), str_web);
+	// save web info txt
+	if (bsp_create_web_qr_str(&qr_str) == ESP_OK) {
+		ESP_LOGI(TAG, "web string(%d): %s", strlen(qr_str), qr_str);
 
-	write_to_sdcard(SDCARD_MOUNT_POINT "/webinfo.txt", str_web);
-	ESP_LOGI(TAG, "save web info OK");
-#endif
-
-// save wifi info qr-jpg
-#if 0
-	const uint32_t out_image_size = 256;
-	int qr_side = 0;
-	int fret = 0;
-	
-	uint8_t *qr_bits_buf =
-		heap_caps_malloc(QR_MAX_BITDATA, MALLOC_CAP_SPIRAM);
-	uint8_t *qr_bmp_buf = heap_caps_malloc(
-		out_image_size * out_image_size * 3, MALLOC_CAP_SPIRAM);
-	uint8_t *outbuf = heap_caps_malloc(100 * 1024, MALLOC_CAP_SPIRAM);
-
-	qr_side = qr_encode(QR_LEVEL_M, 0, str_wifi, strlen(str_wifi),
-			    qr_bits_buf);
-	ESP_LOGI(TAG, "qrencode side = %d", qr_side);
-
-	draw_qr_code(0, 0, out_image_size, qr_side, qr_bits_buf, qr_bmp_buf,
-		     draw_px_24bpp);
-
-	esp_jpeg_encode_one_picture(out_image_size, out_image_size, qr_bmp_buf,
-				    outbuf);
-
-	ESP_LOGI(TAG, "save wifi qr OK");
-
-#endif
-
-#if 0
-
-	qr_side =
-		qr_encode(QR_LEVEL_M, 0, str_web, strlen(str_web), qrbits_buf);
-	ESP_LOGI(TAG, "qrencode side = %d", qr_side);
-
-	draw_qr_code(1100, 1500, 100, qr_side, qrbits_buf, fb1);
-
-	// put text
-	char text_wifi[256];
-	sprintf(text_wifi, "#1: Scan left to connect Wi-Fi <S:%s P:%s>",
-		wifi_config.ap.ssid, wifi_config.ap.password);
-	UG_PutString(120, 1500, text_wifi);
-
-	UG_PutString(120, 1525, "#2: Scan Right to connect to Website");
-
-	char text_manual[256];
-	sprintf(text_manual, "Web: <%s>", str_web);
-	UG_PutString(120, 1550, text_manual);
-
-	UG_PutString(120, 1575, "#3: Select an image to upload to EPD");
-
-		free(outbuf);
-	free(qr_bmp_buf);
-	free(qr_bits_buf);
-#endif
-
-	//free(str_web);
-	//free(str_wifi);
+		write_to_sdcard(SDCARD_MOUNT_POINT "/webinfo.txt", qr_str);
+		ESP_LOGI(TAG, "save web info OK");
+		free(qr_str); // 使用完毕后必须释放内存
+	}
 
 	return ESP_OK;
-}
-
-void check_and_show_start_screen(void)
-{
-	//const char *debug_file_path = SDCARD_MOUNT_POINT "/debug.txt";
-	const char *upload_file_path = SDCARD_MOUNT_POINT "/upload.jpg";
-
-	// 尝试打开 upload 文件
-	FILE *uploadFile = fopen(upload_file_path, "r");
-	bool hasUploadFile = (uploadFile != NULL);
-	if (hasUploadFile) {
-		fclose(uploadFile); // 关闭文件
-	}
-
-	// 根据文件存在情况执行相应操作
-	if (display_debug || (!display_debug && !hasUploadFile)) {
-		show_start_screen(epd);
-	} else if (!display_debug && hasUploadFile) {
-		display_jpg_file(epd, upload_file_path);
-	}
 }
 
 static void save_defconfig(FILE *file, const char *file_path)
@@ -305,6 +226,19 @@ void process_config(const char *file_path)
 		printf("Password: %s\n", password->valuestring);
 	} else {
 		ESP_LOGE(TAG, "Error: Invalid JSON structure.");
+	}
+#endif
+
+#if 1 // 屏幕显示QR
+	cJSON *config_show_qr = cJSON_GetObjectItem(root, "show_qr");
+	if (config_show_qr) {
+		if (cJSON_IsBool(config_show_qr)) {
+			show_qr = cJSON_IsTrue(config_show_qr);
+		} else {
+			ESP_LOGE(TAG, "Error: Invalid JSON structure.");
+		}
+	} else {
+		ESP_LOGW(TAG, "show_qr not set");
 	}
 #endif
 

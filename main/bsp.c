@@ -294,39 +294,69 @@ void sdcard_save_buff(uint8_t *buff, int size, const char *file)
 	fclose(f);
 }
 
-esp_err_t bsp_create_wifi_qr_str(char *str_buf)
+esp_err_t bsp_create_wifi_qr_str(char **str_buf)
 {
 	wifi_config_t wifi_config;
 	esp_err_t ret = esp_wifi_get_config(WIFI_IF_AP, &wifi_config);
-	if (ret == ESP_OK) {
-		ESP_LOGI(TAG, "AP SSID: %s,  Password: %s", wifi_config.ap.ssid,
-			 wifi_config.ap.password);
-	} else {
-		ESP_LOGE(TAG, "Failed to get AP config: %s\n",
+	if (ret != ESP_OK) {
+		ESP_LOGE(TAG, "Failed to get AP config: %s",
 			 esp_err_to_name(ret));
+		return ret;
+	}
+
+	/* 计算需要的内存大小 */
+	int needed_size = snprintf(NULL, 0, "WIFI:T:WPA;S:%s;P:%s;;",
+				   wifi_config.ap.ssid,
+				   wifi_config.ap.password);
+	if (needed_size < 0) {
 		return ESP_FAIL;
 	}
 
-	sprintf(str_buf, "WIFI:T:WPA;S:%s;P:%s;;", wifi_config.ap.ssid,
+	/* 动态申请内存 */
+	*str_buf = heap_caps_malloc(needed_size + 1, MALLOC_CAP_SPIRAM);
+	if (*str_buf == NULL) {
+		return ESP_ERR_NO_MEM;
+	}
+
+	/* 生成最终字符串 */
+	sprintf(*str_buf, "WIFI:T:WPA;S:%s;P:%s;;", wifi_config.ap.ssid,
 		wifi_config.ap.password);
 
 	return ESP_OK;
 }
 
-esp_err_t bsp_create_web_qr_str(char *str_buf)
+esp_err_t bsp_create_web_qr_str(char **str_buf)
 {
 	esp_netif_ip_info_t ip_info;
 	esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
 
-	if (esp_netif_get_ip_info(netif, &ip_info) == ESP_OK) {
-		ESP_LOGI(TAG, "IP Address: " IPSTR "\n", IP2STR(&ip_info.ip));
-	} else {
-		ESP_LOGE(TAG, "Failed to get IP address\n");
+	if (esp_netif_get_ip_info(netif, &ip_info) != ESP_OK) {
+		ESP_LOGE(TAG, "Failed to get IP address");
+		return ESP_FAIL;
 	}
-	// sprintf(str_buf, "http://" IPSTR "/?width=%d&height=%d",
-	// 	IP2STR(&ip_info.ip), epd->width, epd->height);
 
-	sprintf(str_buf, "http://" IPSTR "/", IP2STR(&ip_info.ip));
+	/* 提取IP地址的四个字节 */
+	uint8_t *ip_bytes = (uint8_t *)&ip_info.ip.addr;
+	const uint8_t ip1 = ip_bytes[0];
+	const uint8_t ip2 = ip_bytes[1];
+	const uint8_t ip3 = ip_bytes[2];
+	const uint8_t ip4 = ip_bytes[3];
+
+	/* 计算需要的内存大小 */
+	int needed_size =
+		snprintf(NULL, 0, "http://%u.%u.%u.%u/", ip1, ip2, ip3, ip4);
+	if (needed_size < 0) {
+		return ESP_FAIL;
+	}
+
+	/* 动态申请内存 */
+	*str_buf = heap_caps_malloc(needed_size + 1, MALLOC_CAP_SPIRAM);
+	if (*str_buf == NULL) {
+		return ESP_ERR_NO_MEM;
+	}
+
+	/* 生成最终字符串 */
+	sprintf(*str_buf, "http://%u.%u.%u.%u/", ip1, ip2, ip3, ip4);
 
 	return ESP_OK;
 }

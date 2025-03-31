@@ -11,7 +11,6 @@
 
 #include "img_proc.h"
 #include "utils.h"
-#include "YMS16001200-1330AAX-E6.h"
 #include "bsp.h"
 #include <string.h>
 
@@ -28,9 +27,8 @@
 
 static const char *TAG = "IMG_PRCS";
 int display_debug = 0;
+int show_qr = 0;
 char processing_stage[20] = "idle"; // 初始阶段;
-
-void draw_qrcode_on_ram(YEPD *epd, uint8_t *fb1);
 
 esp_err_t decode_jpg(uint8_t *inbuff, uint32_t insize, uint8_t *outbuff,
 		     uint32_t outsize, uint16_t *w, uint16_t *h)
@@ -333,6 +331,156 @@ void palette_index_to_E6_data(uint8_t *index_buffer, uint8_t *dst_m,
 	}
 }
 
+int find_color_in_pallette(const char *palette, uint32_t color)
+{
+	if (palette == NULL) {
+		return -1;
+	}
+
+	char *copy = strdup(palette);
+	if (copy == NULL) {
+		return -1;
+	}
+
+	int index = 0;
+	char *saveptr1;
+	char *color_str = strtok_r(copy, ";", &saveptr1);
+
+	while (color_str != NULL) {
+		char *saveptr2;
+		char *r_str = strtok_r(color_str, ",", &saveptr2);
+		char *g_str = r_str ? strtok_r(NULL, ",", &saveptr2) : NULL;
+		char *b_str = g_str ? strtok_r(NULL, ",", &saveptr2) : NULL;
+		char *extra = strtok_r(NULL, ",", &saveptr2);
+
+		// 检查是否成功分割出三个分量且无多余分量
+		if (r_str && g_str && b_str && extra == NULL) {
+			int r = atoi(r_str);
+			int g = atoi(g_str);
+			int b = atoi(b_str);
+
+			// 将每个分量限制在0-255范围内，并组合成颜色值
+			uint32_t current_color = ((r & 0xFF) << 16) |
+						 ((g & 0xFF) << 8) | (b & 0xFF);
+
+			if (current_color == color) {
+				free(copy);
+				return index;
+			}
+
+			index++; // 仅在有效颜色时增加索引
+		}
+
+		color_str = strtok_r(NULL, ";", &saveptr1);
+	}
+
+	free(copy);
+	return -1;
+}
+
+void draw_px_index(int16_t x, int16_t y, uint8_t color, void *fb)
+{
+	if (fb) {
+		((uint8_t *)fb)[y * epd->width + x] = color;
+	} else {
+		ESP_LOGE("draw_px_ug_port", "fb not initial");
+	}
+
+	if (((y % 80) == 0) || ((x % 80) == 0)) {
+		vPortYield();
+	}
+}
+
+void draw_qr_code_index(uint16_t x, uint16_t y, int width_t, int side,
+			uint8_t *bitdata, void *fb,
+			draw_px_index_func_t draw_px, uint8_t color_bg,
+			uint8_t color_fg)
+{
+	//PCD8544_Clear();
+	int i = 0;
+	int j = 0;
+	int a = 0;
+	int l = 0;
+	int n = 0;
+	int scale = 1;
+
+	memset(fb, color_bg, width_t * width_t);
+
+	scale = width_t / side;
+
+	for (i = 0; i < side; i++) {
+		for (j = 0; j < side; j++) {
+			a = j * side + i;
+
+			if ((bitdata[a / 8] & (1 << (7 - a % 8)))) {
+				for (l = 0; l < scale; l++) {
+					for (n = 0; n < scale; n++) {
+						draw_px(x + scale * i + l,
+							y + scale * (j) + n,
+							color_fg, fb);
+					}
+				}
+			} else {
+				for (l = 0; l < scale; l++) {
+					for (n = 0; n < scale; n++) {
+						draw_px(x + scale * i + l,
+							y + scale * (j) + n,
+							color_bg, fb);
+					}
+				}
+			}
+		}
+	}
+}
+
+esp_err_t draw_QR_to_index_buffer(YEPD *epd, uint8_t *index_buffer)
+{
+	esp_err_t ret = ESP_OK;
+
+	uint8_t index_black = find_color_in_pallette(epd->palette, 0x000000);
+	uint8_t index_white = find_color_in_pallette(epd->palette, 0xFFFFFF);
+
+	//UG_GUI ug;
+	int qr_width = 100;
+	int qr_side;
+
+	uint8_t *qrbits_buf =
+		heap_caps_malloc(QR_MAX_BITDATA, MALLOC_CAP_SPIRAM);
+
+	char *str_wifi;
+	if (bsp_create_wifi_qr_str(&str_wifi) == ESP_OK) {
+		ESP_LOGI(TAG, "qr string wifi = %s", str_wifi);
+
+		qr_side = qr_encode(QR_LEVEL_M, 0, str_wifi, strlen(str_wifi),
+				    qrbits_buf);
+		ESP_LOGI(TAG, "qrencode side wifi = %d", qr_side);
+
+		draw_qr_code_index(20, epd->height - 20 - qr_width, qr_width,
+				   qr_side, qrbits_buf, index_buffer,
+				   draw_px_index, index_white, index_black);
+
+		free(str_wifi);
+	}
+
+	char *str_web;
+	if (bsp_create_web_qr_str(&str_web) == ESP_OK) {
+		ESP_LOGI(TAG, "qr string web = %s", str_web);
+
+		qr_side = qr_encode(QR_LEVEL_M, 0, str_web, strlen(str_web),
+				    qrbits_buf);
+		ESP_LOGI(TAG, "qrencode side web = %d", qr_side);
+
+		draw_qr_code_index(epd->width - 20 - qr_width,
+				   epd->height - 20 - qr_width, qr_width,
+				   qr_side, qrbits_buf, index_buffer,
+				   draw_px_index, index_white, index_black);
+
+		free(str_web);
+	}
+
+	return ret;
+}
+
 esp_err_t display_jpg_file(YEPD *epd, const char *filename)
 {
 	const char *TAG = "display_jpg_file";
@@ -414,6 +562,10 @@ esp_err_t display_jpg_file(YEPD *epd, const char *filename)
 	free(rgb_buff);
 	show_ram_space("after free rgb_buff");
 
+	if (show_qr != 0) {
+		draw_QR_to_index_buffer(epd, index_buffer);
+	}
+
 	epd->init();
 	epd->fill_index(index_buffer);
 	epd->update();
@@ -477,6 +629,10 @@ esp_err_t display_palette(YEPD *epd)
 		}
 	}
 
+	if (show_qr != 0) {
+		draw_QR_to_index_buffer(epd, index_buffer);
+	}
+
 	epd->init();
 	epd->fill_index(index_buffer);
 	epd->update();
@@ -485,245 +641,5 @@ esp_err_t display_palette(YEPD *epd)
 	free(palette); // 释放数组指针
 	show_ram_space("end of display_palette");
 
-	return ret;
-}
-
-void draw_px_ug_port(int16_t x, int16_t y, uint32_t color, void *fb)
-{
-	if (fb) {
-		((uint8_t *)fb)[y * epd->width + x] = color;
-	} else {
-		ESP_LOGE("draw_px_ug_port", "fb not initial");
-	}
-
-	if (((y % 80) == 0) || ((x % 80) == 0)) {
-		vPortYield();
-	}
-}
-
-void draw_qr_code(uint16_t x, uint16_t y, int width_t, int side,
-		  uint8_t *bitdata, void *fb, draw_px_func_t draw_px)
-{
-	//PCD8544_Clear();
-	int i = 0;
-	int j = 0;
-	int a = 0;
-	int l = 0;
-	int n = 0;
-	int scale = 1;
-
-	memset(fb, 0xff, width_t * width_t);
-
-	scale = width_t / side;
-
-	for (i = 0; i < side; i++) {
-		for (j = 0; j < side; j++) {
-			a = j * side + i;
-
-			if ((bitdata[a / 8] & (1 << (7 - a % 8)))) {
-				for (l = 0; l < scale; l++) {
-					for (n = 0; n < scale; n++) {
-						draw_px(x + scale * i + l,
-							y + scale * (j) + n,
-							BLACK, fb);
-					}
-				}
-			}
-		}
-	}
-}
-
-void draw_qrcode_on_ram(YEPD *epd, uint8_t *fb1)
-{
-	if (display_debug == 0) {
-		return;
-	}
-
-	UG_GUI ug;
-	int qr_side = 0;
-
-	uint8_t *qrbits_buf =
-		heap_caps_malloc(QR_MAX_BITDATA, MALLOC_CAP_SPIRAM);
-	char str_wifi[128] = { 0 };
-	char str_web[128] = { 0 };
-
-	show_ram_space("draw_qrcode_on_ram after malloc 3 ram");
-
-	ESP_LOGI(TAG, "draw_qrcode_on_ram start");
-
-	UG_Init(&ug, draw_px_ug_port, epd->width, epd->height, fb1);
-	UG_FillFrame(0, epd->height - 110, epd->width - 1, epd->height - 1,
-		     WHITE);
-	UG_SetBackcolor(WHITE);
-	UG_SetForecolor(BLACK);
-	UG_FontSelect(&FONT_12X20);
-
-	// draw wifi qr
-	bsp_create_wifi_qr_str(str_wifi);
-	ESP_LOGI(TAG, "wifi string(%d): %s", strlen(str_wifi), str_wifi);
-
-	qr_side = qr_encode(QR_LEVEL_M, 0, str_wifi, strlen(str_wifi),
-			    qrbits_buf);
-	ESP_LOGI(TAG, "qrencode side = %d", qr_side);
-
-	draw_qr_code(20, 1500, 100, qr_side, qrbits_buf, fb1, draw_px_ug_port);
-
-	// draw webside qr
-	bsp_create_web_qr_str(str_web);
-	ESP_LOGI(TAG, "web string(%d): %s", strlen(str_web), str_web);
-
-	qr_side =
-		qr_encode(QR_LEVEL_M, 0, str_web, strlen(str_web), qrbits_buf);
-	ESP_LOGI(TAG, "qrencode side = %d", qr_side);
-
-	draw_qr_code(1100, 1500, 100, qr_side, qrbits_buf, fb1,
-		     draw_px_ug_port);
-
-	// put text
-	char text_wifi[256];
-	sprintf(text_wifi, "#1: Scan left to connect Wi-Fi: %s", str_wifi);
-	UG_PutString(120, 1500, text_wifi);
-
-	UG_PutString(120, 1525, "#2: Scan Right to connect to Website");
-
-	char text_manual[256];
-	sprintf(text_manual, "Web: <%s>", str_web);
-	UG_PutString(120, 1550, text_manual);
-
-	UG_PutString(120, 1575, "#3: Select an image to upload to EPD");
-
-	free(qrbits_buf);
-}
-
-void draw_note(YEPD *epd, uint8_t *fb1)
-{
-	char note1[] =
-		"Use the phone's built-in camera to scan the QR code because most current mobile operating systems restrict third-party applications from controlling Wi-Fi settings directly.";
-	char note2[] =
-		"After connecting to the Wi-Fi, you may see a message saying that this network has no internet access, or prompting you to use mobile data instead. This is normal, as this project operates locally. Choose to stay on this Wi-Fi network and ignore prompts to switch to mobile data.";
-
-	UG_GUI ug;
-	UG_Init(&ug, draw_px_ug_port, epd->width, epd->height, fb1);
-	UG_FillFrame(0, epd->height - 110, epd->width - 1, epd->height - 1,
-		     WHITE);
-	UG_SetBackcolor(WHITE);
-	UG_SetForecolor(RED);
-	UG_FontSelect(&FONT_24X40);
-
-	UG_PutString(50, 100, note1);
-	UG_PutString(50, 500, note2);
-}
-
-void show_start_screen(YEPD *epd)
-{
-	show_ram_space("show_start_screen begin");
-
-	uint8_t *fb1 = (uint8_t *)heap_caps_malloc(epd->width * epd->height,
-						   MALLOC_CAP_SPIRAM);
-	uint8_t *fbm = (uint8_t *)heap_caps_malloc(epd->width * epd->height / 4,
-						   MALLOC_CAP_SPIRAM);
-	uint8_t *fbs = (uint8_t *)heap_caps_malloc(epd->width * epd->height / 4,
-						   MALLOC_CAP_SPIRAM);
-
-	show_ram_space("show_start_screen after alloc");
-
-	// compatiable with color pallet
-	for (int y = 0; y < epd->height; y++) {
-		for (int x = 0; x < epd->width; x++) {
-			// white
-			if (x < 200) {
-				draw_px_ug_port(x, y, BLACK, fb1);
-			}
-			// black
-			if ((x >= 200) && (x < 400)) {
-				draw_px_ug_port(x, y, WHITE, fb1);
-			}
-			// red
-			if ((x >= 400) && (x < 600)) {
-				draw_px_ug_port(x, y, YELLOW, fb1);
-			}
-			// green
-			if ((x >= 600) && (x < 800)) {
-				draw_px_ug_port(x, y, RED, fb1);
-			}
-			// blue
-			if ((x >= 800) && (x < 1000)) {
-				draw_px_ug_port(x, y, BLUE - 1, fb1);
-			}
-			// yellow
-			if ((x >= 1000) && (x < 1200)) {
-				draw_px_ug_port(x, y, GREEN - 1, fb1);
-			}
-		}
-	}
-
-	//draw_note(fb1);
-	draw_qrcode_on_ram(epd, fb1);
-
-	// fb1 -> fb2
-	palette_index_to_E6_data(fb1, fbm, fbs, epd->width, epd->height);
-
-	// ppd send data, update
-	//EL133UF1_Init();
-	//EL133UF1_DisplayFrame(fbm, fbs);
-	//EL133UF1_Deinit();
-
-	free(fbs);
-	free(fbm);
-	free(fb1);
-
-	show_ram_space("show_start_screen before exit");
-}
-
-jpeg_error_t esp_jpeg_encode_one_picture(uint32_t w, uint32_t h, uint8_t *inbuf,
-					 uint8_t *outbuf)
-{
-	// configure encoder
-	jpeg_enc_config_t jpeg_enc_cfg = DEFAULT_JPEG_ENC_CONFIG();
-	jpeg_enc_cfg.width = w;
-	jpeg_enc_cfg.height = h;
-	jpeg_enc_cfg.src_type = JPEG_PIXEL_FORMAT_RGB888;
-	jpeg_enc_cfg.subsampling = JPEG_SUBSAMPLE_420;
-	jpeg_enc_cfg.quality = 60;
-	jpeg_enc_cfg.rotate = JPEG_ROTATE_0D;
-	jpeg_enc_cfg.task_enable = false;
-	jpeg_enc_cfg.hfm_task_priority = 13;
-	jpeg_enc_cfg.hfm_task_core = 1;
-
-	jpeg_error_t ret = JPEG_ERR_OK;
-	//uint8_t *inbuf = test_rgb888_data;
-	int image_size = jpeg_enc_cfg.width * jpeg_enc_cfg.height * 3;
-	//uint8_t *outbuf = NULL;
-	//int outbuf_size = 1024;
-	int out_len = 0;
-	jpeg_enc_handle_t jpeg_enc = NULL;
-	FILE *out = NULL;
-
-	// open
-	ret = jpeg_enc_open(&jpeg_enc_cfg, &jpeg_enc);
-	if (ret != JPEG_ERR_OK) {
-		return ret;
-	}
-
-	// process
-	ret = jpeg_enc_process(jpeg_enc, inbuf, image_size, outbuf, 100 * 1024,
-			       &out_len);
-	if (ret != JPEG_ERR_OK) {
-		goto jpeg_example_exit;
-	}
-
-	out = fopen("/sdcard/qr_wifi.jpg", "wb+");
-	if (out == NULL) {
-		goto jpeg_example_exit;
-	}
-	fwrite(outbuf, 1, out_len, out);
-	fclose(out);
-
-jpeg_example_exit:
-	// close
-	jpeg_enc_close(jpeg_enc);
-	//if (outbuf) {
-	//	free(outbuf);
-	//}
 	return ret;
 }
