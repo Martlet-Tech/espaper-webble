@@ -186,30 +186,30 @@ static void SPI_DATA(unsigned char dat)
 
 	CSB_L;
 
-	delay_us(1);
+	//delay_us(1);
 	SDA_H; //1 for DCX_DATA
 	SCL_H;
-	delay_us(1);
+	//delay_us(1);
 	SCL_L;
-	delay_us(1);
+	//delay_us(1);
 	for (i = 0; i < 8; i++) {
 		if (dat & 0x80) {
 			SDA_H;
 		} else {
 			SDA_L;
 		}
-		delay_us(1);
+		//delay_us(1);
 		SCL_H;
-		delay_us(1);
+		//delay_us(1);
 		SCL_L;
 		dat = dat << 1;
 	}
 	SDA_L;
-	delay_us(1);
+	//delay_us(1);
 
 	CSB_H;
 
-	delay_us(1);
+	//delay_us(1);
 }
 
 #if 0
@@ -361,11 +361,11 @@ int YMS800480_073AAX_E6_fill_index(uint8_t *buff)
 
 	SPI_COMMAND(DTM);
 	for (int i = 0; i < 192000; i++) {
-		if ((i % 1000) == 0) {
+		if ((i % 200) == 0) {
 			//esp_task_wdt_reset();
 			printf(".");
 			fflush(stdout);
-			//vPortYield();
+			vPortYield();
 			delay_ms(1);
 		}
 
@@ -403,3 +403,29 @@ int YMS800480_073AAX_E6_update(void)
 	ESP_LOGI(TAG, "update end");
 	return 0;
 }
+
+YEPD YMS800480_073AAX_E6 = {.name ="YMS800480-073AAX-E6",
+	.width =800,
+	.height =480,
+	.palette ="0,0,0;255,255,255;255,255,0;255,0,0;0,0,255;0,255,0",
+	.bpp = 4,
+	.init =YMS800480_073AAX_E6_init,
+	.fill_index =YMS800480_073AAX_E6_fill_index,
+	.update =YMS800480_073AAX_E6_update,
+	.interface = YEPD_IF_SPI8S,
+	.pin_rst = 1,
+	.pin_busy = 1,
+	.pin_cs = { 1, 2, -1 },
+	.pin_sck = 1,
+	.pin_dc = -1,
+	.pin_d = { 1, 2, -1 },
+	.sections = {
+		{.x0 = 0, .y0 = 0, .x1 = 1200/2, .y1 = 1600},
+	},
+	.cmd_init = 
+		"00 00 10 a0 ff ff\n"
+		    "01 02 05 12 34 56 78\n",
+	.cmd_disp = 
+		"00 00 10 a0 ff ff\n"
+		    "01 02 05 12 34 56 78\n",
+};

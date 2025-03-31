@@ -419,3 +419,31 @@ int EL133UF1_new_update(void)
 
 	return 0;
 }
+
+YEPD YMS16001200_1330AAX_E6 ={.name = "YMS16001200-1330AAX-E6",
+	.width = 1200,
+	.height = 1600,
+	.palette = "0,0,0;255,255,255;255,255,0;255,0,0;0,0,255;0,255,0",
+	.bpp = 4,
+	.init = EL133UF1_new_init,
+	.fill_index = EL133UF1_new_fill_index,
+	.update = EL133UF1_new_update,
+	.interface = YEPD_IF_SPI8S,
+	.pin_rst = 21,
+	.pin_busy = 14,
+	.pin_cs = { 13, 9, -1 },
+	.pin_sck = 12,
+	.pin_dc = -1,
+	.pin_d = { 11, -1 },
+	.sections = {
+		{.x0 = 0, .y0 = 0, .x1 = 1200/2, .y1 = 1600, .cs_mask = 0x01, .index_to_section = build_data_e6},
+		{.x0 = 1200/2, .y0 = 0, .x1 = 1200/2, .y1 = 1600, .cs_mask = 0x02, .index_to_section = build_data_e6},
+		{.index_to_section = NULL}
+	},
+	.cmd_init = 
+		"00 00 10 a0 ff ff\n"
+		    "01 02 05 12 34 56 78\n",
+	.cmd_disp = 
+		"00 00 10 a0 ff ff\n"
+		    "01 02 05 12 34 56 78\n",
+};

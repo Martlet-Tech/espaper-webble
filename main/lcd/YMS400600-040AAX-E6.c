@@ -407,3 +407,30 @@ int YMS400600_040AAX_E6_update(void)
 	ESP_LOGI(TAG, "update end");
 	return 0;
 }
+
+YEPD YMS400600_040AAX_E6 = {.name ="YMS400600-040AAX-E6",
+	.width =400,
+	.height =600,
+	.palette ="0,0,0;255,255,255;255,255,0;255,0,0;0,0,255;0,255,0",
+	.bpp = 4,
+	.init = YMS400600_040AAX_E6_init,
+	.fill_index = YMS400600_040AAX_E6_fill_index,
+	.update = YMS400600_040AAX_E6_update,
+	.interface = YEPD_IF_SPI8S,
+	.pin_rst = 1,
+	.pin_busy = 1,
+	.pin_cs = { 1, 2, -1 },
+	.pin_sck = 1,
+	.pin_dc = -1,
+	.pin_d = { 1, 2, -1 },
+	.sections = {
+		{.x0 = 0, .y0 = 0, .x1 = 1200/2, .y1 = 1600},
+	},
+	.cmd_init = 
+		"00 00 10 a0 ff ff\n"
+		    "01 02 05 12 34 56 78\n",
+	.cmd_disp = 
+		"00 00 10 a0 ff ff\n"
+		    "01 02 05 12 34 56 78\n",
+	
+};

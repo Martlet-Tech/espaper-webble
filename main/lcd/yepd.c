@@ -20,6 +20,10 @@
 #include "YMS800480-073AAX-E6.h"
 #include "YMS16001200-1330AAX-E6.h"
 
+extern YEPD YMS400600_040AAX_E6;
+extern YEPD YMS800480_073AAX_E6;
+extern YEPD YMS16001200_1330AAX_E6;
+
 void build_data_e6(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1,
 		   uint8_t *index_buff, uint8_t *data_buff)
 {
@@ -51,86 +55,11 @@ void build_data_e6(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1,
 	}
 }
 
-YEPD epd_list[] = {
-	{.name ="YMS400600-040AAX-E6",
-		.width =400,
-		.height =600,
-		.palette ="0,0,0;255,255,255;255,255,0;255,0,0;0,0,255;0,255,0",
-		.bpp = 4,
-		.init = YMS400600_040AAX_E6_init,
-		.fill_index = YMS400600_040AAX_E6_fill_index,
-		.update = YMS400600_040AAX_E6_update,
-		.interface = YEPD_IF_SPI8S,
-		.pin_rst = 1,
-		.pin_busy = 1,
-		.pin_cs = { 1, 2, -1 },
-		.pin_sck = 1,
-		.pin_dc = -1,
-		.pin_d = { 1, 2, -1 },
-		.sections = {
-			{.x0 = 0, .y0 = 0, .x1 = 1200/2, .y1 = 1600},
-		},
-		.cmd_init = 
-			"00 00 10 a0 ff ff\n"
-    			"01 02 05 12 34 56 78\n",
-		.cmd_disp = 
-			"00 00 10 a0 ff ff\n"
-    			"01 02 05 12 34 56 78\n",
-		
-	},
-	{.name ="YMS800480-073AAX-E6",
-		.width =800,
-		.height =480,
-		.palette ="0,0,0;255,255,255;255,255,0;255,0,0;0,0,255;0,255,0",
-		.bpp = 4,
-		.init =YMS800480_073AAX_E6_init,
-		.fill_index =YMS800480_073AAX_E6_fill_index,
-		.update =YMS800480_073AAX_E6_update,
-		.interface = YEPD_IF_SPI8S,
-		.pin_rst = 1,
-		.pin_busy = 1,
-		.pin_cs = { 1, 2, -1 },
-		.pin_sck = 1,
-		.pin_dc = -1,
-		.pin_d = { 1, 2, -1 },
-		.sections = {
-			{.x0 = 0, .y0 = 0, .x1 = 1200/2, .y1 = 1600},
-		},
-		.cmd_init = 
-			"00 00 10 a0 ff ff\n"
-    			"01 02 05 12 34 56 78\n",
-		.cmd_disp = 
-			"00 00 10 a0 ff ff\n"
-    			"01 02 05 12 34 56 78\n",
-	},
-	{.name = "YMS16001200-1330AAX-E6",
-		.width = 1200,
-		.height = 1600,
-		.palette = "0,0,0;255,255,255;255,255,0;255,0,0;0,0,255;0,255,0",
-		.bpp = 4,
-		.init = EL133UF1_new_init,
-		.fill_index = EL133UF1_new_fill_index,
-		.update = EL133UF1_new_update,
-		.interface = YEPD_IF_SPI8S,
-		.pin_rst = 21,
-		.pin_busy = 14,
-		.pin_cs = { 13, 9, -1 },
-		.pin_sck = 12,
-		.pin_dc = -1,
-		.pin_d = { 11, -1 },
-		.sections = {
-			{.x0 = 0, .y0 = 0, .x1 = 1200/2, .y1 = 1600, .cs_mask = 0x01, .index_to_section = build_data_e6},
-			{.x0 = 1200/2, .y0 = 0, .x1 = 1200/2, .y1 = 1600, .cs_mask = 0x02, .index_to_section = build_data_e6},
-			{.index_to_section = NULL}
-		},
-		.cmd_init = 
-			"00 00 10 a0 ff ff\n"
-    			"01 02 05 12 34 56 78\n",
-		.cmd_disp = 
-			"00 00 10 a0 ff ff\n"
-    			"01 02 05 12 34 56 78\n",
-	},
-	{ NULL },
+YEPD *epd_list[] = {
+	&YMS400600_040AAX_E6,
+	&YMS800480_073AAX_E6,
+	&YMS16001200_1330AAX_E6,
+	NULL,
 };
 
 static int yepd_get_index_by_name(const char *module_name)
@@ -138,8 +67,8 @@ static int yepd_get_index_by_name(const char *module_name)
 	int index = 0;
 
 	// 遍历 epd_list，直到遇到空对象
-	while (epd_list[index].name != NULL) {
-		if (strcmp(epd_list[index].name, module_name) == 0) {
+	while (epd_list[index] != NULL) {
+		if (strcmp(epd_list[index]->name, module_name) == 0) {
 			return index; // 找到匹配项，返回索引
 		}
 		index++;
@@ -152,7 +81,7 @@ YEPD *yepd_find_by_name(const char *module_name)
 {
 	int index = yepd_get_index_by_name(module_name);
 	if (index >= 0) {
-		return &epd_list[index];
+		return epd_list[index];
 	}
 	return NULL;
 }
