@@ -378,10 +378,10 @@ int find_color_in_pallette(const char *palette, uint32_t color)
 	return -1;
 }
 
-void draw_px_index(int16_t x, int16_t y, uint8_t color, void *fb)
+void draw_px_index(int16_t x, int16_t y, uint32_t color, void *fb)
 {
 	if (fb) {
-		((uint8_t *)fb)[y * epd->width + x] = color;
+		((uint8_t *)fb)[y * epd->width + x] = 0xFF & color;
 	} else {
 		ESP_LOGE("draw_px_ug_port", "fb not initial");
 	}
@@ -393,7 +393,7 @@ void draw_px_index(int16_t x, int16_t y, uint8_t color, void *fb)
 
 void draw_qr_code_index(uint16_t x, uint16_t y, int width_t, int side,
 			uint8_t *bitdata, void *fb,
-			draw_px_index_func_t draw_px, uint8_t color_bg,
+			draw_px_func_t draw_px, uint32_t color_bg,
 			uint8_t color_fg)
 {
 	//PCD8544_Clear();
@@ -440,9 +440,19 @@ esp_err_t draw_QR_to_index_buffer(YEPD *epd, uint8_t *index_buffer)
 	uint8_t index_black = find_color_in_pallette(epd->palette, 0x000000);
 	uint8_t index_white = find_color_in_pallette(epd->palette, 0xFFFFFF);
 
-	//UG_GUI ug;
-	int qr_width = 100;
+	const int qr_width = 100;
+	const int boader = 20;
+
 	int qr_side;
+
+	UG_GUI ug;
+	UG_Init(&ug, draw_px_index, epd->width, epd->height, index_buffer);
+	UG_FillFrame(0, epd->height - qr_width - boader * 2,
+		     qr_width + boader * 2, epd->height - 1, index_white);
+
+	UG_FillFrame(epd->width - qr_width - boader * 2,
+		     epd->height - qr_width - boader * 2, epd->width - 1,
+		     epd->height - 1, index_white);
 
 	uint8_t *qrbits_buf =
 		heap_caps_malloc(QR_MAX_BITDATA, MALLOC_CAP_SPIRAM);
