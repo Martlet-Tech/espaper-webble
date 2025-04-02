@@ -488,6 +488,8 @@ esp_err_t draw_QR_to_index_buffer(YEPD *epd, uint8_t *index_buffer)
 		free(str_web);
 	}
 
+	free(qrbits_buf);
+
 	return ret;
 }
 
