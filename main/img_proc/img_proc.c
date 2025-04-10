@@ -392,9 +392,8 @@ void draw_px_index(int16_t x, int16_t y, uint32_t color, void *fb)
 }
 
 void draw_qr_code_index(uint16_t x, uint16_t y, int width_t, int side,
-			uint8_t *bitdata, void *fb,
-			draw_px_func_t draw_px, uint32_t color_bg,
-			uint8_t color_fg)
+			uint8_t *bitdata, void *fb, draw_px_func_t draw_px,
+			uint32_t color_bg, uint8_t color_fg)
 {
 	//PCD8544_Clear();
 	int i = 0;
@@ -588,101 +587,20 @@ esp_err_t display_jpg_file(YEPD *epd, const char *filename)
 
 	return ret;
 }
-
-esp_err_t display_bmp_file(YEPD *epd, const char *filename)
+// Need to free buffer after called!!!
+esp_err_t display_indexed_buffer(YEPD *epd, char *index_buffer)
 {
-	const char *TAG = "display_bmp_file";
-	esp_err_t ret = ESP_OK;
-
-	uint32_t file_size = 0;
-	uint8_t *jpg_file_buff = NULL;
-	uint8_t *rgb_buff = NULL;
-	uint32_t rgb_buff_size = epd->width * epd->height * 3;
-
-	uint16_t w_img = 0;
-	uint16_t h_img = 0;
-
-	ESP_LOGW(TAG, "file name: %s", filename);
-
-	show_ram_space("start of display_bmp_file");
-
-	// read jpg file to psram
-	jpg_file_buff = SD_MMC_ReadFileToPsram(filename, &file_size);
-	if ((jpg_file_buff == NULL) || (file_size == 0)) {
-		ESP_LOGE(TAG, "read jpg file fail");
-		return ESP_FAIL;
-	}
-
-	// alloc rgb_buff
-	rgb_buff = heap_caps_malloc(rgb_buff_size, MALLOC_CAP_SPIRAM);
-	if (rgb_buff == NULL) {
-		ESP_LOGE(TAG, "rgb_buff malloc fail");
-		return ESP_FAIL;
-	}
-	show_ram_space("after malloc rgb_buff");
-
-	// decode jpg file to rgb_buff
-	ESP_ERROR_CHECK(decode_jpg(jpg_file_buff, file_size, rgb_buff,
-				   rgb_buff_size, &w_img, &h_img));
-
-	if ((w_img != epd->width) || (h_img != epd->height)) {
-		ESP_LOGE(TAG, "image error w:%d h:%d", w_img, h_img);
-		free(jpg_file_buff);
-		free(rgb_buff);
-		return ESP_FAIL;
-	}
-
-	free(jpg_file_buff);
-	show_ram_space("after free jpg_file_buff");
-
-	// 解析调色板
-	size_t color_count = 0;
-	uint8_t **palette = parse_palette(epd->palette, &color_count);
-	if (!palette) {
-		printf("Failed to parse palette.\n");
-		return 1;
-	}
-	printf("Parsed %zu colors:\n", color_count);
-	for (size_t i = 0; i < color_count; i++) {
-		printf("Color %zu: R=%d, G=%d, B=%d\n", i, palette[i][0],
-		       palette[i][1], palette[i][2]);
-	}
-
-	// 像素对调色板索引缓存
-	uint8_t *index_buffer =
-		heap_caps_malloc(epd->width * epd->height, MALLOC_CAP_SPIRAM);
-	if (index_buffer == NULL) {
-		ESP_LOGE(TAG, "index_buffer malloc fail");
-		return ESP_FAIL;
-	}
-	show_ram_space("after malloc index_buffer");
-
-	// process dither
-	int64_t start_time = esp_timer_get_time();
-	atkinson_dither(rgb_buff, index_buffer, epd->width, epd->height,
-			palette, color_count);
-	int64_t end_time = esp_timer_get_time();
-	int64_t time_elapsed = end_time - start_time;
-	ESP_LOGI(TAG, "dither execution time: %lld us\n", time_elapsed);
-
-	show_ram_space("after dither, before free rgb_buff");
-
-	free(rgb_buff);
-	show_ram_space("after free rgb_buff");
-
 	if (show_qr != 0) {
-		draw_QR_to_index_buffer(epd, index_buffer);
+		draw_QR_to_index_buffer(epd, (uint8_t *)index_buffer);
 	}
 
 	epd->init();
-	epd->fill_index(index_buffer);
+	epd->fill_index((uint8_t *)index_buffer);
 	epd->update();
 
-	free(index_buffer);
-	free(palette); // 释放数组指针
-	show_ram_space("end of display_jpg_file");
+	//free(index_buffer);
 
-	return ret;
+	return ESP_OK;
 }
 
 esp_err_t display_jpg_numble(YEPD *epd, int num)

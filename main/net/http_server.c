@@ -24,7 +24,7 @@
 #include "esp_event.h"
 #include "yepd.h"
 
-#define BUFFER_SIZE 1024
+#define BUFFER_SIZE 4096
 #define MAX_FILE_SIZE (4 * 1024 * 1024) // 假设文件大小最大为 2MB
 
 extern YEPD *epd;
@@ -43,33 +43,6 @@ static size_t html_cache_size = 0; // 缓存的大小
 bool is_busy = false;
 
 extern char processing_stage[];
-
-static int find_jpeg_start(const unsigned char *data, size_t data_len)
-{
-	// 定义Content-Type字段和分隔符的标记
-	const char *content_type = "Content-Type: image/jpeg";
-	const char *double_crlf = "\r\n\r\n";
-
-	// 查找Content-Type的结束位置
-	const unsigned char *pos =
-		memmem(data, data_len, content_type, strlen(content_type));
-	if (pos == NULL) {
-		printf("Content-Type not found\n");
-		return -1;
-	}
-
-	// 查找Content-Type行后的双换行符位置
-	pos = memmem(pos + strlen(content_type),
-		     data_len - (pos - data + strlen(content_type)),
-		     double_crlf, strlen(double_crlf));
-	if (pos == NULL) {
-		printf("Double CRLF not found after Content-Type\n");
-		return -1;
-	}
-
-	// JPEG数据开始的位置是双换行符的末尾
-	return (pos - data) + strlen(double_crlf);
-}
 
 /* 根路径处理函数 */
 static esp_err_t index_get_handler(httpd_req_t *req)
@@ -106,6 +79,116 @@ static esp_err_t index_get_handler(httpd_req_t *req)
 	free(html_cache);
 
 	return ESP_OK;
+}
+
+// 修改后的parse_multipart_data核心逻辑：
+char *find_boundary(char *start, char *end, const char *boundary_str,
+		    size_t boundary_len)
+{
+	for (char *ptr = start; ptr < end - boundary_len; ptr += 64) {
+		if (memcmp(ptr, boundary_str, boundary_len) == 0) {
+			return ptr;
+		}
+	}
+	return NULL;
+}
+
+// 在HTTP请求处理函数中添加以下代码
+char *parse_multipart_data(char *data, size_t data_len, const char *boundary,
+			   const char *target_field, size_t *start_offset,
+			   size_t *length)
+{
+	const size_t boundary_len = strlen(boundary);
+	char *search_start = data;
+	char *data_end = data + data_len;
+
+	// 必须的边界格式校验
+	if (boundary_len < 2 || boundary[0] != '-' || boundary[1] != '-') {
+		ESP_LOGE(TAG, "Invalid boundary format");
+		return NULL;
+	}
+
+	while (search_start < data_end) {
+		// 查找boundary起始位置
+		char *boundary_pos = NULL;
+		for (char *p = search_start; p <= data_end - boundary_len;
+		     p++) {
+			if (memcmp(p, boundary, boundary_len) == 0) {
+				boundary_pos = p;
+				break;
+			}
+		}
+		if (!boundary_pos)
+			break;
+
+		// 定位headers结束位置
+		char *headers_end =
+			strstr(boundary_pos + boundary_len, "\r\n\r\n");
+		if (!headers_end) {
+			headers_end =
+				strstr(boundary_pos + boundary_len, "\n\n");
+			if (!headers_end)
+				break;
+			headers_end += 2;
+		} else {
+			headers_end += 4;
+		}
+
+		// 解析字段名
+		char *name_start = strstr(boundary_pos, "name=\"");
+		if (!name_start) {
+			search_start = boundary_pos + boundary_len;
+			continue;
+		}
+		name_start += 6;
+		char *name_end = strchr(name_start, '"');
+		if (!name_end || name_end >= headers_end) {
+			search_start = boundary_pos + boundary_len;
+			continue;
+		}
+
+		// 匹配目标字段
+		size_t name_len = name_end - name_start;
+		char field_name[64] = { 0 };
+		memcpy(field_name, name_start, name_len > 63 ? 63 : name_len);
+		if (strcmp(field_name, target_field) != 0) {
+			search_start = boundary_pos + boundary_len;
+			continue;
+		}
+
+		// 定位数据区域
+		char *data_start = headers_end;
+		char *next_boundary = NULL;
+
+		// 精确查找下一个boundary
+		for (char *p = data_start; p <= data_end - boundary_len; p++) {
+			if (memcmp(p, boundary, boundary_len) == 0) {
+				next_boundary = p;
+				break;
+			}
+		}
+
+		// 计算数据结束位置
+		char *data_end_pos = next_boundary ? next_boundary : data_end;
+
+		// 去除尾部换行符（最多回退2字节）
+		while (data_end_pos > data_start) {
+			if (data_end_pos[-1] == '\n')
+				data_end_pos--;
+			if (data_end_pos > data_start &&
+			    data_end_pos[-1] == '\r')
+				data_end_pos--;
+			else
+				break;
+		}
+
+		// 返回结果
+		*start_offset = data_start - data;
+		*length = data_end_pos - data_start;
+		return data_start;
+	}
+
+	return NULL;
 }
 
 static esp_err_t upload_post_handler(httpd_req_t *req)
@@ -165,64 +248,111 @@ static esp_err_t upload_post_handler(httpd_req_t *req)
 	if (received < 0) {
 		ESP_LOGE(TAG, "File upload failed");
 		goto upload_post_handler_error;
+	} else {
+		ESP_LOGI(TAG, "File upload success, get %d Bytes", offset);
 	}
 
-	// find file start
-	ptrdiff_t offset_file_start =
-		find_jpeg_start((const unsigned char *)(psram_data), 1024);
+	// 在接收完数据后添加解析代码
+	size_t index_offset = 0;
+	size_t index_length = 0;
+	char *boundary = NULL;
 
-	const void *pos = NULL;
+	// 从Content-Type头提取boundary
+	char content_type[128] = { 0 };
+	if (httpd_req_get_hdr_value_str(req, "Content-Type", content_type,
+					sizeof(content_type)) == ESP_OK) {
+		char *b_start = strstr(content_type, "boundary=");
+		if (b_start) {
+			b_start += 9;
+			char *b_end =
+				strpbrk(b_start, "\r\n;"); // 兼容多种结束符
+			if (!b_end)
+				b_end = content_type + strlen(content_type);
 
-	// find file ends
-	const char *end_string = "------WebKitFormBoundary";
-	// Adjust search size
-	size_t search_size = req->content_len > 1024 ? 1024 : req->content_len;
-
-	pos = memmem(psram_data + req->content_len - search_size, search_size,
-		     end_string, strlen(end_string));
-	ptrdiff_t offset_file_end = (const unsigned char *)pos -
-				    (const unsigned char *)(psram_data);
-	offset_file_end -= 2;
-	ESP_LOGI(TAG, "File offset = %d", (int)offset_file_end);
-
-	if ((offset_file_end < offset_file_start) || (offset_file_start < 0)) {
-		ESP_LOGI(TAG, "File offset file fail");
-		// Send success response in JSON format
-		httpd_resp_set_type(req, "application/json");
-		const char *resp_str =
-			"{\"code\":500, \"msg\":\"Upload data parse fail.\"}";
-		httpd_resp_send(req, resp_str, strlen(resp_str));
-
-		goto upload_post_handler_error;
+			// 生成带"--"前缀的boundary
+			size_t boundary_len = b_end - b_start;
+			boundary = malloc(boundary_len + 3);
+			snprintf(boundary, boundary_len + 3, "--%.*s",
+				 boundary_len, b_start);
+			ESP_LOGI(TAG, "Computed boundary: |%s|", boundary);
+		}
 	}
 
-	ESP_LOGI(TAG, "File upload successful, total size: %zu bytes", offset);
+	if (boundary) {
+		// 解析各个字段
+		size_t field_offset, field_len;
+
+		// 解析调色板
+		if (parse_multipart_data((char *)psram_data, offset, boundary,
+					 "palette", &field_offset,
+					 &field_len)) {
+			char *palette_str = malloc(field_len + 1);
+			memcpy(palette_str, psram_data + field_offset,
+			       field_len);
+			palette_str[field_len] = '\0';
+			ESP_LOGI(TAG, "Palette: %s", palette_str);
+			free(palette_str);
+		} else {
+			ESP_LOGI(TAG, "Palette: parse failed");
+		}
+
+		// 解析索引数据
+		if (parse_multipart_data((char *)psram_data, offset, boundary,
+					 "file", &index_offset,
+					 &index_length)) {
+			ESP_LOGI(TAG, "Index Data Offset: %d, Length: %d",
+				 index_offset, index_length);
+
+			// 示例：打印前16字节的索引数据
+			uint8_t *index_data =
+				(uint8_t *)(psram_data + index_offset);
+			char index_sample[65] = { 0 };
+			for (int i = 0; i < 16 && i < index_length; i++) {
+				sprintf(index_sample + i * 3, "%02X ",
+					index_data[i]);
+			}
+			ESP_LOGI(TAG, "Index Sample: %s", index_sample);
+		} else {
+			ESP_LOGI(TAG, "index data: parse failed");
+		}
+
+		// 解析其他字段（示例）
+		if (parse_multipart_data((char *)psram_data, offset, boundary,
+					 "width", &field_offset, &field_len)) {
+			char width_str[16] = { 0 };
+			memcpy(width_str, psram_data + field_offset, field_len);
+			ESP_LOGI(TAG, "Width: %s", width_str);
+		} else {
+			ESP_LOGI(TAG, "width: parse failed");
+		}
+		if (parse_multipart_data((char *)psram_data, offset, boundary,
+					 "height", &field_offset, &field_len)) {
+			char height_str[16] = { 0 };
+			memcpy(height_str, psram_data + field_offset,
+			       field_len);
+			ESP_LOGI(TAG, "Height: %s", height_str);
+		} else {
+			ESP_LOGI(TAG, "Height: parse failed");
+		}
+
+		free(boundary);
+	} else {
+		ESP_LOGE(TAG, "Failed to find boundary");
+	}
 
 	// Send success response in JSON format
 	httpd_resp_set_type(req, "application/json");
 	const char *resp_str = "{\"code\":200, \"msg\":\"Upload complete.\"}";
 	httpd_resp_send(req, resp_str, strlen(resp_str));
 
+	display_indexed_buffer(epd, psram_data + index_offset);
+
 	sdcard_save_buff((uint8_t *)(psram_data), offset,
 			 SDCARD_MOUNT_POINT "/request.bin");
-
-	int current_maxnum_jpg = scan_and_sort_images();
-	int new_img_num = get_file_num_from_index(current_maxnum_jpg - 1) + 1;
-	char jpg_file_path[64]; // 确保这个长度足够存储路径字符串
-	snprintf(jpg_file_path, sizeof(jpg_file_path), "%s/%d.jpg",
-		 SDCARD_MOUNT_POINT, new_img_num);
-
-	ESP_LOGW(TAG, "image save as %s", jpg_file_path);
-
-	sdcard_save_buff((uint8_t *)(psram_data + offset_file_start),
-			 offset_file_end - offset_file_start, jpg_file_path);
-	set_current_image_number(new_img_num);
 
 	// 释放 PSRAM 缓存
 	free(psram_data);
 	strcpy(processing_stage, "decoding");
-
-	display_jpg_file(epd, jpg_file_path);
 
 	is_busy = false;
 	ESP_LOGI(TAG, "upload_post_handler return OK");
@@ -276,10 +406,11 @@ static esp_err_t lang_handler(httpd_req_t *req)
 static esp_err_t device_info_handler(httpd_req_t *req)
 {
 	// 动态生成 JSON 数据
-	char response[128];
-	snprintf(response, sizeof(response),
-		 "{\"name\":\"%s\", \"width\":\"%d\", \"height\":\"%d\"}",
-		 epd->name, epd->width, epd->height);
+	char response[256];
+	snprintf(
+		response, sizeof(response),
+		"{\"name\":\"%s\", \"width\":\"%d\", \"height\":\"%d\", \"palette\":\"%s\"}",
+		epd->name, epd->width, epd->height, epd->palette);
 
 	// 设置响应头
 	httpd_resp_set_type(req, "application/json");
