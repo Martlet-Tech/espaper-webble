@@ -415,359 +415,127 @@ typedef struct {
 
 } EL315TW1;
 
-#if 0
-//This Function convert normal pixels to HGD arrangments.
-//运行时间大概100ms
-static void _palette_index_to_EL315_data(uint8_t *index_buffer, uint8_t *dst)
-{
-	// memset(dst, 0x0, EPD_FRAME_BUFFER_SIZE);
-	//frame:                0~400, 400~800, 800~1200, 1200~1280, 1280~1680, 1680~2080, 2080~2480, 2480~2560
-	//line(width) offset:   0~200, 200~400, 400~600,  600~640,   640~840,   840~1040,  1040~1240, 1240~1280
-	int flip_y = 1;
-	if (flip_y == 0) {
-		for (int j = 0; j < EPD_HEIGHT; j++) {
-			for (int i = 0; i < 200; i++) {
-				uint8_t even_byte =
-					index_buffer[i + j * EPD_WIDTH / 2];
-				uint8_t odd_byte =
-					index_buffer[i +
-						     (j + 1) * EPD_WIDTH / 2];
-				*dst++ = (even_byte & 0xF0) |
-					 ((odd_byte & 0xF0) >> 4);
-				*dst++ = ((even_byte & 0xF) << 4) |
-					 (odd_byte & 0xF);
-			}
-		}
-
-		for (int j = 0; j < EPD_HEIGHT; j++) {
-			for (int i = 200; i < 400; i++) {
-				uint8_t even_byte =
-					index_buffer[i + j * EPD_WIDTH / 2];
-				uint8_t odd_byte =
-					index_buffer[i +
-						     (j + 1) * EPD_WIDTH / 2];
-				*dst++ = (even_byte & 0xF0) |
-					 ((odd_byte & 0xF0) >> 4);
-				*dst++ = ((even_byte & 0xF) << 4) |
-					 (odd_byte & 0xF);
-			}
-		}
-
-		for (int j = 0; j < EPD_HEIGHT; j++) {
-			for (int i = 400; i < 600; i++) {
-				uint8_t even_byte =
-					index_buffer[i + j * EPD_WIDTH / 2];
-				uint8_t odd_byte =
-					index_buffer[i +
-						     (j + 1) * EPD_WIDTH / 2];
-				*dst++ = (even_byte & 0xF0) |
-					 ((odd_byte & 0xF0) >> 4);
-				*dst++ = ((even_byte & 0xF) << 4) |
-					 (odd_byte & 0xF);
-			}
-		}
-
-		for (int j = 0; j < EPD_HEIGHT; j++) {
-			for (int i = 600; i < 640; i++) {
-				uint8_t even_byte =
-					index_buffer[i + j * EPD_WIDTH / 2];
-				uint8_t odd_byte =
-					index_buffer[i +
-						     (j + 1) * EPD_WIDTH / 2];
-				*dst++ = (even_byte & 0xF0) |
-					 ((odd_byte & 0xF0) >> 4);
-				*dst++ = ((even_byte & 0xF) << 4) |
-					 (odd_byte & 0xF);
-			}
-			dst += 320; //dummy
-		}
-
-		for (int j = 0; j < EPD_HEIGHT; j++) {
-			for (int i = 640; i < 840; i++) {
-				uint8_t even_byte =
-					index_buffer[i + j * EPD_WIDTH / 2];
-				uint8_t odd_byte =
-					index_buffer[i +
-						     (j + 1) * EPD_WIDTH / 2];
-				*dst++ = (even_byte & 0xF0) |
-					 ((odd_byte & 0xF0) >> 4);
-				*dst++ = ((even_byte & 0xF) << 4) |
-					 (odd_byte & 0xF);
-			}
-		}
-
-		for (int j = 0; j < EPD_HEIGHT; j++) {
-			for (int i = 840; i < 1040; i++) {
-				uint8_t even_byte =
-					index_buffer[i + j * EPD_WIDTH / 2];
-				uint8_t odd_byte =
-					index_buffer[i +
-						     (j + 1) * EPD_WIDTH / 2];
-				*dst++ = (even_byte & 0xF0) |
-					 ((odd_byte & 0xF0) >> 4);
-				*dst++ = ((even_byte & 0xF) << 4) |
-					 (odd_byte & 0xF);
-			}
-		}
-
-		for (int j = 0; j < EPD_HEIGHT; j++) {
-			for (int i = 1040; i < 1240; i++) {
-				uint8_t even_byte =
-					index_buffer[i + j * EPD_WIDTH / 2];
-				uint8_t odd_byte =
-					index_buffer[i +
-						     (j + 1) * EPD_WIDTH / 2];
-				*dst++ = (even_byte & 0xF0) |
-					 ((odd_byte & 0xF0) >> 4);
-				*dst++ = ((even_byte & 0xF) << 4) |
-					 (odd_byte & 0xF);
-			}
-		}
-
-		for (int j = 0; j < EPD_HEIGHT; j++) {
-			for (int i = 1240; i < 1280; i++) {
-				uint8_t even_byte =
-					index_buffer[i + j * EPD_WIDTH / 2];
-				uint8_t odd_byte =
-					index_buffer[i +
-						     (j + 1) * EPD_WIDTH / 2];
-				*dst++ = (even_byte & 0xF0) |
-					 ((odd_byte & 0xF0) >> 4);
-				*dst++ = ((even_byte & 0xF) << 4) |
-					 (odd_byte & 0xF);
-			}
-			dst += 320; //dummy
-		}
-
-	} else {
-		for (int j = EPD_HEIGHT - 1; j >= 0; j--, j--) {
-			for (int i = 0; i < 200; i++) {
-				uint8_t even_byte =
-					index_buffer[i + j * EPD_WIDTH / 2];
-				uint8_t odd_byte =
-					index_buffer[i +
-						     (j - 1) * EPD_WIDTH / 2];
-				*dst++ = (even_byte & 0xF0) |
-					 ((odd_byte & 0xF0) >> 4);
-				*dst++ = ((even_byte & 0xF) << 4) |
-					 (odd_byte & 0xF);
-			}
-		}
-
-		for (int j = EPD_HEIGHT - 1; j >= 0; j--, j--) {
-			for (int i = 200; i < 400; i++) {
-				uint8_t even_byte =
-					index_buffer[i + j * EPD_WIDTH / 2];
-				uint8_t odd_byte =
-					index_buffer[i +
-						     (j - 1) * EPD_WIDTH / 2];
-				*dst++ = (even_byte & 0xF0) |
-					 ((odd_byte & 0xF0) >> 4);
-				*dst++ = ((even_byte & 0xF) << 4) |
-					 (odd_byte & 0xF);
-			}
-		}
-
-		for (int j = EPD_HEIGHT - 1; j >= 0; j--, j--) {
-			for (int i = 400; i < 600; i++) {
-				uint8_t even_byte =
-					index_buffer[i + j * EPD_WIDTH / 2];
-				uint8_t odd_byte =
-					index_buffer[i +
-						     (j - 1) * EPD_WIDTH / 2];
-				*dst++ = (even_byte & 0xF0) |
-					 ((odd_byte & 0xF0) >> 4);
-				*dst++ = ((even_byte & 0xF) << 4) |
-					 (odd_byte & 0xF);
-			}
-		}
-
-		for (int j = EPD_HEIGHT - 1; j >= 0; j--, j--) {
-			for (int i = 600; i < 640; i++) {
-				uint8_t even_byte =
-					index_buffer[i + j * EPD_WIDTH / 2];
-				uint8_t odd_byte =
-					index_buffer[i +
-						     (j - 1) * EPD_WIDTH / 2];
-				*dst++ = (even_byte & 0xF0) |
-					 ((odd_byte & 0xF0) >> 4);
-				*dst++ = ((even_byte & 0xF) << 4) |
-					 (odd_byte & 0xF);
-			}
-			dst += 320; //dummy
-		}
-
-		for (int j = EPD_HEIGHT - 1; j >= 0; j--, j--) {
-			for (int i = 640; i < 840; i++) {
-				uint8_t even_byte =
-					index_buffer[i + j * EPD_WIDTH / 2];
-				uint8_t odd_byte =
-					index_buffer[i +
-						     (j - 1) * EPD_WIDTH / 2];
-				*dst++ = (even_byte & 0xF0) |
-					 ((odd_byte & 0xF0) >> 4);
-				*dst++ = ((even_byte & 0xF) << 4) |
-					 (odd_byte & 0xF);
-			}
-		}
-
-		for (int j = EPD_HEIGHT - 1; j >= 0; j--, j--) {
-			for (int i = 840; i < 1040; i++) {
-				uint8_t even_byte =
-					index_buffer[i + j * EPD_WIDTH / 2];
-				uint8_t odd_byte =
-					index_buffer[i +
-						     (j - 1) * EPD_WIDTH / 2];
-				*dst++ = (even_byte & 0xF0) |
-					 ((odd_byte & 0xF0) >> 4);
-				*dst++ = ((even_byte & 0xF) << 4) |
-					 (odd_byte & 0xF);
-			}
-		}
-
-		for (int j = EPD_HEIGHT - 1; j >= 0; j--, j--) {
-			for (int i = 1040; i < 1240; i++) {
-				uint8_t even_byte =
-					index_buffer[i + j * EPD_WIDTH / 2];
-				uint8_t odd_byte =
-					index_buffer[i +
-						     (j - 1) * EPD_WIDTH / 2];
-				*dst++ = (even_byte & 0xF0) |
-					 ((odd_byte & 0xF0) >> 4);
-				*dst++ = ((even_byte & 0xF) << 4) |
-					 (odd_byte & 0xF);
-			}
-		}
-
-		for (int j = EPD_HEIGHT - 1; j >= 0; j--, j--) {
-			for (int i = 1240; i < 1280; i++) {
-				uint8_t even_byte =
-					index_buffer[i + j * EPD_WIDTH / 2];
-				uint8_t odd_byte =
-					index_buffer[i +
-						     (j - 1) * EPD_WIDTH / 2];
-				*dst++ = (even_byte & 0xF0) |
-					 ((odd_byte & 0xF0) >> 4);
-				*dst++ = ((even_byte & 0xF) << 4) |
-					 (odd_byte & 0xF);
-			}
-			dst += 320; //dummy
-		}
-	}
-}
-#endif
-
 static void _palette_index_to_EL315_data(uint8_t *index_buffer, uint8_t *dst)
 {
 	// memset(dst, 0x0, EPD_FRAME_BUFFER_SIZE);
 	//frame:                0~400, 400~800, 800~1200, 1200~1280, 1280~1680, 1680~2080, 2080~2480, 2480~2560
 	//line(width) offset:   0~200, 200~400, 400~600,  600~640,   640~840,   840~1040,  1040~1240, 1240~1280
 	ESP_LOGW(TAG, "frame buff addr %08x", (unsigned int)dst);
-	for (int j = 0; j < EPD_HEIGHT; j++) {
-		for (int i = 0; i < 400; i += 2) {
+	for (int j = 0; j < EPD_HEIGHT; j += 2) {
+		for (int i = 0; i < 400; i++) {
 			uint8_t even_byte = index_buffer[i + j * EPD_WIDTH];
-			uint8_t odd_byte = index_buffer[i + 1 + j * EPD_WIDTH];
+			uint8_t odd_byte =
+				index_buffer[i + (j + 1) * EPD_WIDTH];
 			if (even_byte >= 4)
 				even_byte += 1;
 			if (odd_byte >= 4)
 				odd_byte += 1;
-			*dst++ = (even_byte | (odd_byte << 4));
+			*dst++ = (odd_byte | ((even_byte << 4) & 0xF0));
 		}
 	}
 
 	ESP_LOGW(TAG, "frame buff addr %08x", (unsigned int)dst);
-	for (int j = 0; j < EPD_HEIGHT; j++) {
-		for (int i = 400; i < 800; i += 2) {
+	for (int j = 0; j < EPD_HEIGHT; j += 2) {
+		for (int i = 400; i < 800; i++) {
 			uint8_t even_byte = index_buffer[i + j * EPD_WIDTH];
-			uint8_t odd_byte = index_buffer[i + 1 + j * EPD_WIDTH];
+			uint8_t odd_byte =
+				index_buffer[i + (j + 1) * EPD_WIDTH];
 			if (even_byte >= 4)
 				even_byte += 1;
 			if (odd_byte >= 4)
 				odd_byte += 1;
-			*dst++ = (even_byte | (odd_byte << 4));
+			*dst++ = (odd_byte | ((even_byte << 4) & 0xF0));
 		}
 	}
 
 	ESP_LOGW(TAG, "frame buff addr %08x", (unsigned int)dst);
-	for (int j = 0; j < EPD_HEIGHT; j++) {
-		for (int i = 800; i < 1200; i += 2) {
+	for (int j = 0; j < EPD_HEIGHT; j += 2) {
+		for (int i = 800; i < 1200; i++) {
 			uint8_t even_byte = index_buffer[i + j * EPD_WIDTH];
-			uint8_t odd_byte = index_buffer[i + 1 + j * EPD_WIDTH];
+			uint8_t odd_byte =
+				index_buffer[i + (j + 1) * EPD_WIDTH];
 			if (even_byte >= 4)
 				even_byte += 1;
 			if (odd_byte >= 4)
 				odd_byte += 1;
-			*dst++ = (even_byte | (odd_byte << 4));
+			*dst++ = (odd_byte | ((even_byte << 4) & 0xF0));
 		}
 	}
 
 	ESP_LOGW(TAG, "frame buff addr %08x", (unsigned int)dst);
-	for (int j = 0; j < EPD_HEIGHT; j++) {
-		for (int i = 1200; i < 1280; i += 2) {
+	for (int j = 0; j < EPD_HEIGHT; j += 2) {
+		for (int i = 1200; i < 1280; i++) {
 			uint8_t even_byte = index_buffer[i + j * EPD_WIDTH];
-			uint8_t odd_byte = index_buffer[i + 1 + j * EPD_WIDTH];
+			uint8_t odd_byte =
+				index_buffer[i + (j + 1) * EPD_WIDTH];
 			if (even_byte >= 4)
 				even_byte += 1;
 			if (odd_byte >= 4)
 				odd_byte += 1;
-			*dst++ = (even_byte | (odd_byte << 4));
+			*dst++ = (odd_byte | ((even_byte << 4) & 0xF0));
 		}
-		dst += 160; //dummy
+
+		dst += 320;
 	}
 
 	//---------------------------------------------------------------------
 
 	ESP_LOGW(TAG, "frame buff addr %08x", (unsigned int)dst);
-	for (int j = 0; j < EPD_HEIGHT; j++) {
-		for (int i = 1280; i < 1680; i += 2) {
+	for (int j = 0; j < EPD_HEIGHT; j += 2) {
+		for (int i = 1280; i < 1680; i++) {
 			uint8_t even_byte = index_buffer[i + j * EPD_WIDTH];
-			uint8_t odd_byte = index_buffer[i + 1 + j * EPD_WIDTH];
+			uint8_t odd_byte =
+				index_buffer[i + (j + 1) * EPD_WIDTH];
 			if (even_byte >= 4)
 				even_byte += 1;
 			if (odd_byte >= 4)
 				odd_byte += 1;
-			*dst++ = (even_byte | (odd_byte << 4));
+			*dst++ = (odd_byte | ((even_byte << 4) & 0xF0));
 		}
 	}
 
 	ESP_LOGW(TAG, "frame buff addr %08x", (unsigned int)dst);
-	for (int j = 0; j < EPD_HEIGHT; j++) {
-		for (int i = 1680; i < 2080; i += 2) {
+	for (int j = 0; j < EPD_HEIGHT; j += 2) {
+		for (int i = 1680; i < 2080; i++) {
 			uint8_t even_byte = index_buffer[i + j * EPD_WIDTH];
-			uint8_t odd_byte = index_buffer[i + 1 + j * EPD_WIDTH];
+			uint8_t odd_byte =
+				index_buffer[i + (j + 1) * EPD_WIDTH];
 			if (even_byte >= 4)
 				even_byte += 1;
 			if (odd_byte >= 4)
 				odd_byte += 1;
-			*dst++ = (even_byte | (odd_byte << 4));
+			*dst++ = (odd_byte | ((even_byte << 4) & 0xF0));
 		}
 	}
 
 	ESP_LOGW(TAG, "frame buff addr %08x", (unsigned int)dst);
-	for (int j = 0; j < EPD_HEIGHT; j++) {
-		for (int i = 2080; i < 2480; i += 2) {
+	for (int j = 0; j < EPD_HEIGHT; j += 2) {
+		for (int i = 2080; i < 2480; i++) {
 			uint8_t even_byte = index_buffer[i + j * EPD_WIDTH];
-			uint8_t odd_byte = index_buffer[i + 1 + j * EPD_WIDTH];
+			uint8_t odd_byte =
+				index_buffer[i + (j + 1) * EPD_WIDTH];
 			if (even_byte >= 4)
 				even_byte += 1;
 			if (odd_byte >= 4)
 				odd_byte += 1;
-			*dst++ = (even_byte | (odd_byte << 4));
+			*dst++ = (odd_byte | ((even_byte << 4) & 0xF0));
 		}
 	}
 
 	ESP_LOGW(TAG, "frame buff addr %08x", (unsigned int)dst);
-	for (int j = 0; j < EPD_HEIGHT; j++) {
-		for (int i = 2480; i < 2560; i += 2) {
+	for (int j = 0; j < EPD_HEIGHT; j += 2) {
+		for (int i = 2480; i < 2560; i++) {
 			uint8_t even_byte = index_buffer[i + j * EPD_WIDTH];
-			uint8_t odd_byte = index_buffer[i + 1 + j * EPD_WIDTH];
+			uint8_t odd_byte =
+				index_buffer[i + (j + 1) * EPD_WIDTH];
 			if (even_byte >= 4)
 				even_byte += 1;
 			if (odd_byte >= 4)
 				odd_byte += 1;
-			*dst++ = (even_byte | (odd_byte << 4));
+			*dst++ = (odd_byte | ((even_byte << 4) & 0xF0));
 		}
-		dst += 160; //dummy
+
+		dst += 320;
 	}
 
 	ESP_LOGW(TAG, "frame buff addr %08x", (unsigned int)dst);
