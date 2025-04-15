@@ -93,27 +93,27 @@ int EL133UF1_Deinit(void);
 
 const unsigned char spiCsPin[2] = { PIN_CS_M, PIN_CS_S };
 
-const unsigned char AN_TM_V[9] = { 0xC0, 0x1C, 0x1C, 0xCC, 0xCC,
+static const unsigned char AN_TM_V[9] = { 0xC0, 0x1C, 0x1C, 0xCC, 0xCC,
 				   0xCC, 0x15, 0x15, 0x55 };
-const unsigned char CMD66_V[6] = { 0x49, 0x55, 0x13, 0x5D, 0x05, 0x10 };
-const unsigned char PSR_V[2] = { 0xDF, 0x69 };
-const unsigned char CDI_V[1] = { 0xF7 };
-const unsigned char TCON_V[2] = { 0x03, 0x03 };
-const unsigned char AGID_V[1] = { 0x10 };
-const unsigned char PWS_V[1] = { 0x22 };
-const unsigned char CCSET_V[1] = { 0x01 };
-const unsigned char TRES_V[4] = { 0x04, 0xB0, 0x03, 0x20 };
-const unsigned char PWR_V[6] = { 0x0F, 0x00, 0x28, 0x2C, 0x28, 0x38 };
-const unsigned char EN_BUF_V[1] = { 0x07 };
-const unsigned char BTST_P_V[2] = { 0xE8, 0x28 };
-const unsigned char BOOST_VDDP_EN_V[1] = { 0x01 };
-const unsigned char BTST_N_V[2] = { 0xE8, 0x28 };
-const unsigned char BUCK_BOOST_VDDN_V[1] = { 0x01 };
-const unsigned char TFT_VCOM_POWER_V[1] = { 0x02 };
+static const unsigned char CMD66_V[6] = { 0x49, 0x55, 0x13, 0x5D, 0x05, 0x10 };
+static const unsigned char PSR_V[2] = { 0xDF, 0x69 };
+static const unsigned char CDI_V[1] = { 0xF7 };
+static const unsigned char TCON_V[2] = { 0x03, 0x03 };
+static const unsigned char AGID_V[1] = { 0x10 };
+static const unsigned char PWS_V[1] = { 0x22 };
+static const unsigned char CCSET_V[1] = { 0x01 };
+static const unsigned char TRES_V[4] = { 0x04, 0xB0, 0x03, 0x20 };
+static const unsigned char PWR_V[6] = { 0x0F, 0x00, 0x28, 0x2C, 0x28, 0x38 };
+static const unsigned char EN_BUF_V[1] = { 0x07 };
+static const unsigned char BTST_P_V[2] = { 0xE8, 0x28 };
+static const unsigned char BOOST_VDDP_EN_V[1] = { 0x01 };
+static const unsigned char BTST_N_V[2] = { 0xE8, 0x28 };
+static const unsigned char BUCK_BOOST_VDDN_V[1] = { 0x01 };
+static const unsigned char TFT_VCOM_POWER_V[1] = { 0x02 };
 
-const unsigned char DRF_V[1] = { 0x00 };
-const unsigned char POF_V[1] = { 0x00 };
-const unsigned char SPIM_V[1] = { 0x10 };
+static const unsigned char DRF_V[1] = { 0x00 };
+static const unsigned char POF_V[1] = { 0x00 };
+//static const unsigned char SPIM_V[1] = { 0x10 };
 
 spi_device_handle_t spi;
 

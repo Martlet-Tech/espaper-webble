@@ -9,14 +9,10 @@
 // Copyright : E Ink Holdings Inc.
 //=================================================================================================
 
-#ifndef __EL133UF1_H__
-#define __EL133UF1_H__
+#ifndef __YMS25601440_3150AAX_E6
+#define __YMS25601440_3150AAX_E6
 
 #include "esp_attr.h"
 #include "yepd.h"
 
-int EL133UF1_new_init(void);
-int EL133UF1_new_update(void);
-int EL133UF1_new_fill_index(uint8_t *index_buff);
-
-#endif // #ifndef __EL133UF1_H__
+#endif
