@@ -318,14 +318,11 @@ static uint8_t _spi_transfer(uint8_t data)
 
 static void _spi_transfer_bytes(const uint8_t *tx, uint8_t *rx, size_t len)
 {
-	//spi_transaction_t t = { .length = len * 8, // 总位数
-	//			.tx_buffer = tx,
-	//			.rx_buffer = rx };
-	//spi_device_polling_transmit(spi_device, &t);
-
 	size_t max_chunk =
 		SOC_SPI_MAXIMUM_BUFFER_SIZE; // 自动获取芯片支持的最大长度
 	size_t transferred = 0;
+
+	int chunk_cnt = 0;
 
 	while (len > 0) {
 		// 计算本次传输块大小
@@ -338,8 +335,6 @@ static void _spi_transfer_bytes(const uint8_t *tx, uint8_t *rx, size_t len)
 			.rx_buffer = rx ? rx + transferred : NULL
 		};
 
-		// 执行阻塞式传输
-		//spi_device_polling_transmit(spi_device, &t);
 		spi_device_transmit(spi_device, &t);
 
 		// 更新计数器和指针偏移
@@ -347,12 +342,18 @@ static void _spi_transfer_bytes(const uint8_t *tx, uint8_t *rx, size_t len)
 		len -= chunk;
 
 		//delay(10);
-		if ((transferred % 100) == 0) {
+		if ((transferred % 1000) == 0) {
 			printf(".");
 			fflush(stdout);
 		}
+
+		chunk_cnt++;
 	}
-	printf("\r\n");
+
+	if (chunk_cnt > 1) {
+		printf("\n");
+		fflush(stdout);
+	}
 }
 
 static void _spi_end_transaction(void)

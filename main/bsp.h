@@ -29,7 +29,7 @@ typedef void (*callback_t)(void); // 回调函数类型定义
 #define SPIFFS_MOUNT_POINT "/spiffs"
 #define EXAMPLE_MAX_CHAR_SIZE 64
 
-extern YEPD *epd;
+extern YEPD *gyepd;
 
 void bsp_gpio_initial(void);
 
@@ -50,5 +50,7 @@ int scan_and_sort_images();
 int get_max_jpg_num(void);
 int set_current_image_number(int num);
 int get_file_num_from_index(int index);
+
+void start(void);
 
 #endif

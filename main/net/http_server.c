@@ -27,7 +27,7 @@
 #define BUFFER_SIZE 4096
 #define MAX_FILE_SIZE (4 * 1024 * 1024) // 假设文件大小最大为 2MB
 
-extern YEPD *epd;
+extern YEPD *gyepd;
 
 typedef struct {
 	char *data; // 用于存储文件数据的 PSRAM 缓存
@@ -345,7 +345,7 @@ static esp_err_t upload_post_handler(httpd_req_t *req)
 	const char *resp_str = "{\"code\":200, \"msg\":\"Upload complete.\"}";
 	httpd_resp_send(req, resp_str, strlen(resp_str));
 
-	display_indexed_buffer(epd, psram_data + index_offset);
+	display_indexed_buffer(gyepd, psram_data + index_offset);
 
 	sdcard_save_buff((uint8_t *)(psram_data), offset,
 			 SDCARD_MOUNT_POINT "/request.bin");
@@ -410,7 +410,7 @@ static esp_err_t device_info_handler(httpd_req_t *req)
 	snprintf(
 		response, sizeof(response),
 		"{\"name\":\"%s\", \"width\":\"%d\", \"height\":\"%d\", \"palette\":\"%s\"}",
-		epd->name, epd->width, epd->height, epd->palette);
+		gyepd->name, gyepd->width, gyepd->height, gyepd->palette);
 
 	// 设置响应头
 	httpd_resp_set_type(req, "application/json");

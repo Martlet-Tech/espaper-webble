@@ -15,10 +15,10 @@
 #include <string.h>
 #include <dirent.h>
 #include <ctype.h>
+#include <errno.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "freertos/task.h"
-#include <errno.h>
 
 #include "nvs_flash.h"
 #include "esp_event.h"
@@ -33,15 +33,35 @@
 #include "sdmmc_cmd.h"
 #include <esp_timer.h>
 
+#include "qr_encode.h"
+#include "cJSON.h"
+
+// 自定义头文件，确保它们不是重复的
+#include "ap.h"
+#include "http_server.h"
+#include "bsp.h"
 #include "img_proc.h"
+#include "utils.h"
+#include "yepd_if.h"
+#include "yepd.h"
+
+#define MAX_FILES 100 // 假设最大图片数量为 100
+
+extern int display_debug;
+extern int show_qr;
+
+extern YEPD *gyepd; // global epd pointer, defined in bsp.c
+
+void bsp_gpio_initial(void);
+
+void process_config(const char *file_path);
 
 static const char *TAG = "bsp.c";
 
 sdmmc_card_t *card;
 
-YEPD *epd;
+YEPD *gyepd;
 
-#define MAX_FILES 100 // 假设最大图片数量为 100
 int image_numbers[MAX_FILES]; // 存储所有图片的编号
 int image_count = 0; // 图片数量
 int current_image_number = -1; // 当前图片编号
@@ -119,12 +139,12 @@ esp_err_t sdcard_mount()
 	sdmmc_host_t host = SDMMC_HOST_DEFAULT();
 	sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
 	slot_config.width = 4;
-	slot_config.clk = 42;
-	slot_config.cmd = 41;
-	slot_config.d0 = 2;
-	slot_config.d1 = 1;
-	slot_config.d2 = 39;
-	slot_config.d3 = 40;
+	slot_config.clk = 6; //42;
+	slot_config.cmd = 7; //41;
+	slot_config.d0 = 5; //2;
+	slot_config.d1 = 4; //1;
+	slot_config.d2 = 16; //39;
+	slot_config.d3 = 15; //40;
 	slot_config.flags |= SDMMC_SLOT_FLAG_INTERNAL_PULLUP;
 
 	ret = esp_vfs_fat_sdmmc_mount(mount_point, &host, &slot_config,
@@ -366,17 +386,17 @@ esp_err_t bsp_create_web_qr_str(char **str_buf)
 void callback_1()
 {
 	printf("GPIO %d callback executed\n", GPIO_IO_NUM_1);
-	show_prev_image(epd);
+	show_prev_image(gyepd);
 }
 void callback_2()
 {
 	printf("GPIO %d callback executed\n", GPIO_IO_NUM_2);
-	show_next_image(epd);
+	show_next_image(gyepd);
 }
 void callback_3()
 {
 	printf("GPIO %d callback executed\n", GPIO_IO_NUM_3);
-	delete_current_image(epd);
+	delete_current_image(gyepd);
 }
 void callback_4()
 {
@@ -395,6 +415,7 @@ gpio_monitor_t gpio_monitor[GPIO_NUM] = { { GPIO_IO_NUM_1, NULL, callback_1 },
 					  { GPIO_IO_NUM_3, NULL, callback_3 },
 					  { GPIO_IO_NUM_4, NULL, callback_4 } };
 
+#if 0
 // 定时器回调函数
 static void timer_callback(void *arg)
 {
@@ -416,6 +437,7 @@ static void IRAM_ATTR gpio_isr_handler(void *arg)
 				     DEBOUNCE_TIME_MS * 1000);
 	}
 }
+#endif
 
 void bsp_gpio_initial(void)
 {
@@ -427,7 +449,7 @@ void bsp_gpio_initial(void)
 	gpiocfg_out_lcd.pull_up_en = GPIO_PULLUP_DISABLE;
 	gpio_config(&gpiocfg_out_lcd);
 
-	gpio_config_t io_conf = {
+	/*gpio_config_t io_conf = {
 		.intr_type = GPIO_INTR_NEGEDGE, // 检测下降沿
 		.mode = GPIO_MODE_INPUT, // 输入模式
 		.pin_bit_mask =
@@ -450,7 +472,7 @@ void bsp_gpio_initial(void)
 
 		gpio_isr_handler_add(gpio_monitor[i].gpio_num, gpio_isr_handler,
 				     &gpio_monitor[i]);
-	}
+	}*/
 }
 
 #endif
@@ -462,7 +484,7 @@ int scan_and_sort_images()
 	struct dirent *entry;
 	DIR *dir = opendir("/sdcard");
 	if (dir == NULL) {
-		printf("Failed to open directory.\n");
+		ESP_LOGE(TAG, "Failed to open directory.\n");
 		return -1;
 	}
 
@@ -514,7 +536,7 @@ void show_next_image(YEPD *epd)
 	scan_and_sort_images();
 
 	if (image_count == 0) {
-		printf("No images to display.\n");
+		ESP_LOGE(TAG, "No images to display.\n");
 		return;
 	}
 
@@ -611,7 +633,7 @@ void delete_current_image()
 		// 如果没有图片剩余，重置为无效值
 		current_image_number = -1;
 		printf("No images left.\n");
-		display_palette(epd);
+		display_palette(gyepd);
 		return;
 	}
 
@@ -623,7 +645,7 @@ void delete_current_image()
 			snprintf(filepath_next, sizeof(filepath_next),
 				 "/sdcard/%d.jpg", current_image_number);
 			printf("Displaying: %s\n", filepath_next);
-			display_jpg_numble(epd, current_image_number);
+			display_jpg_numble(gyepd, current_image_number);
 			return;
 		}
 	}
@@ -634,5 +656,5 @@ void delete_current_image()
 	snprintf(filepath_first, sizeof(filepath_first), "/sdcard/%d.jpg",
 		 current_image_number);
 	printf("Displaying: %s (looped to smallest)\n", filepath_first);
-	display_jpg_numble(epd, current_image_number);
+	display_jpg_numble(gyepd, current_image_number);
 }

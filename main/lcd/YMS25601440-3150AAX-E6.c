@@ -111,7 +111,7 @@ const unsigned char SPIM_V[1] = { 0x00 };
 static const char TAG[] = "YMS25601440-3150AAX-E6.c";
 
 static uint8_t *dst_frame_buffer; //store hgd processed frames (8 frames)
-static uint8_t *dst_image_buffer; //store image recieved
+//static uint8_t *dst_image_buffer; //store image recieved
 
 #if 1 // EPD_IO
 #define SPI_MOSI 13
@@ -331,6 +331,8 @@ void _EPD_IO_CheckBusy_L(void)
 			break;
 		}
 	}
+	printf("\n");
+	fflush(stdout);
 }
 
 /**
@@ -350,6 +352,8 @@ void _EPD_IO_CheckBusy_H(void)
 			break;
 		}
 	}
+	printf("\n");
+	fflush(stdout);
 }
 
 static EPD_IO epd_io = {
@@ -420,7 +424,6 @@ static void _palette_index_to_EL315_data(uint8_t *index_buffer, uint8_t *dst)
 	// memset(dst, 0x0, EPD_FRAME_BUFFER_SIZE);
 	//frame:                0~400, 400~800, 800~1200, 1200~1280, 1280~1680, 1680~2080, 2080~2480, 2480~2560
 	//line(width) offset:   0~200, 200~400, 400~600,  600~640,   640~840,   840~1040,  1040~1240, 1240~1280
-	ESP_LOGW(TAG, "frame buff addr %08x", (unsigned int)dst);
 	for (int j = 0; j < EPD_HEIGHT; j += 2) {
 		for (int i = 0; i < 400; i++) {
 			uint8_t even_byte = index_buffer[i + j * EPD_WIDTH];
@@ -434,7 +437,6 @@ static void _palette_index_to_EL315_data(uint8_t *index_buffer, uint8_t *dst)
 		}
 	}
 
-	ESP_LOGW(TAG, "frame buff addr %08x", (unsigned int)dst);
 	for (int j = 0; j < EPD_HEIGHT; j += 2) {
 		for (int i = 400; i < 800; i++) {
 			uint8_t even_byte = index_buffer[i + j * EPD_WIDTH];
@@ -448,7 +450,6 @@ static void _palette_index_to_EL315_data(uint8_t *index_buffer, uint8_t *dst)
 		}
 	}
 
-	ESP_LOGW(TAG, "frame buff addr %08x", (unsigned int)dst);
 	for (int j = 0; j < EPD_HEIGHT; j += 2) {
 		for (int i = 800; i < 1200; i++) {
 			uint8_t even_byte = index_buffer[i + j * EPD_WIDTH];
@@ -462,7 +463,6 @@ static void _palette_index_to_EL315_data(uint8_t *index_buffer, uint8_t *dst)
 		}
 	}
 
-	ESP_LOGW(TAG, "frame buff addr %08x", (unsigned int)dst);
 	for (int j = 0; j < EPD_HEIGHT; j += 2) {
 		for (int i = 1200; i < 1280; i++) {
 			uint8_t even_byte = index_buffer[i + j * EPD_WIDTH];
@@ -480,7 +480,6 @@ static void _palette_index_to_EL315_data(uint8_t *index_buffer, uint8_t *dst)
 
 	//---------------------------------------------------------------------
 
-	ESP_LOGW(TAG, "frame buff addr %08x", (unsigned int)dst);
 	for (int j = 0; j < EPD_HEIGHT; j += 2) {
 		for (int i = 1280; i < 1680; i++) {
 			uint8_t even_byte = index_buffer[i + j * EPD_WIDTH];
@@ -494,7 +493,6 @@ static void _palette_index_to_EL315_data(uint8_t *index_buffer, uint8_t *dst)
 		}
 	}
 
-	ESP_LOGW(TAG, "frame buff addr %08x", (unsigned int)dst);
 	for (int j = 0; j < EPD_HEIGHT; j += 2) {
 		for (int i = 1680; i < 2080; i++) {
 			uint8_t even_byte = index_buffer[i + j * EPD_WIDTH];
@@ -508,7 +506,6 @@ static void _palette_index_to_EL315_data(uint8_t *index_buffer, uint8_t *dst)
 		}
 	}
 
-	ESP_LOGW(TAG, "frame buff addr %08x", (unsigned int)dst);
 	for (int j = 0; j < EPD_HEIGHT; j += 2) {
 		for (int i = 2080; i < 2480; i++) {
 			uint8_t even_byte = index_buffer[i + j * EPD_WIDTH];
@@ -522,7 +519,6 @@ static void _palette_index_to_EL315_data(uint8_t *index_buffer, uint8_t *dst)
 		}
 	}
 
-	ESP_LOGW(TAG, "frame buff addr %08x", (unsigned int)dst);
 	for (int j = 0; j < EPD_HEIGHT; j += 2) {
 		for (int i = 2480; i < 2560; i++) {
 			uint8_t even_byte = index_buffer[i + j * EPD_WIDTH];
@@ -537,8 +533,6 @@ static void _palette_index_to_EL315_data(uint8_t *index_buffer, uint8_t *dst)
 
 		dst += 320;
 	}
-
-	ESP_LOGW(TAG, "frame buff addr %08x", (unsigned int)dst);
 }
 
 static void EL315TW1_SetPwrToPmic(unsigned char *pmicData)
@@ -833,8 +827,7 @@ static int initial(void)
 }
 
 static int fill_index_buffer(uint8_t *inbuff)
-{ //TODO 250411
-
+{
 	dst_frame_buffer = (uint8_t *)heap_caps_malloc(EPD_FRAME_BUFFER_SIZE,
 						       MALLOC_CAP_SPIRAM);
 	if (dst_frame_buffer == NULL) {

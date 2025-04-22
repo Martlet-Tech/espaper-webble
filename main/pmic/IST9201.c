@@ -340,7 +340,7 @@ static unsigned char _sendPmicData(unsigned char *dataBuffer,
 	Wire.beginTransmission(PMIC_ADDR);
 	int ret = Wire.write(dataBuffer, dataLength);
 
-	Serial.printf("Wire.write. %d Bytes\r\n", ret);
+	//Serial.printf("Wire.write. %d Bytes\r\n", ret);
 
 	if (Wire.endTransmission() == 0) {
 		status = DONE;

@@ -381,7 +381,7 @@ int find_color_in_pallette(const char *palette, uint32_t color)
 void draw_px_index(int16_t x, int16_t y, uint32_t color, void *fb)
 {
 	if (fb) {
-		((uint8_t *)fb)[y * epd->width + x] = 0xFF & color;
+		((uint8_t *)fb)[y * gyepd->width + x] = 0xFF & color;
 	} else {
 		ESP_LOGE("draw_px_ug_port", "fb not initial");
 	}
