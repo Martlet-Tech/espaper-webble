@@ -139,12 +139,12 @@ esp_err_t sdcard_mount()
 	sdmmc_host_t host = SDMMC_HOST_DEFAULT();
 	sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
 	slot_config.width = 4;
-	slot_config.clk = 6; //42;
-	slot_config.cmd = 7; //41;
-	slot_config.d0 = 5; //2;
-	slot_config.d1 = 4; //1;
-	slot_config.d2 = 16; //39;
-	slot_config.d3 = 15; //40;
+	slot_config.clk = 42;
+	slot_config.cmd = 41;
+	slot_config.d0 = 2;
+	slot_config.d1 = 1;
+	slot_config.d2 = 39;
+	slot_config.d3 = 40;
 	slot_config.flags |= SDMMC_SLOT_FLAG_INTERNAL_PULLUP;
 
 	ret = esp_vfs_fat_sdmmc_mount(mount_point, &host, &slot_config,
