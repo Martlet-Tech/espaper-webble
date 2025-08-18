@@ -403,7 +403,7 @@ void draw_qr_code_index(uint16_t x, uint16_t y, int width_t, int side,
 	int n = 0;
 	int scale = 1;
 
-	memset(fb, color_bg, width_t * width_t);
+	//memset(fb, color_bg, width_t * width_t);
 
 	scale = width_t / side;
 
