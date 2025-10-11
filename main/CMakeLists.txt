@@ -12,6 +12,9 @@ idf_component_register(
 			"lcd/YMS400600-040AAX-E6.c"
 			"lcd/YMS800480-073AAX-E6.c"
 			"lcd/YMS16001200-1330AAX-E6.c"
+			"lcd/YMS25601440-3150AAX-E6.c"
+			"pmic/IST9201.c"
+			"arduino_wrapper.c"
 
         INCLUDE_DIRS 	"."
 			"lcd"
@@ -20,5 +23,6 @@ idf_component_register(
 			"img_proc"
 			"ugui"
 			"QRLib"
+			"pmic"
 	# EMBED_FILES 	"web/favicon.ico" "web/upload_script.html"
 )

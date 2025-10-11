@@ -381,7 +381,7 @@ int find_color_in_pallette(const char *palette, uint32_t color)
 void draw_px_index(int16_t x, int16_t y, uint32_t color, void *fb)
 {
 	if (fb) {
-		((uint8_t *)fb)[y * epd->width + x] = 0xFF & color;
+		((uint8_t *)fb)[y * gyepd->width + x] = 0xFF & color;
 	} else {
 		ESP_LOGE("draw_px_ug_port", "fb not initial");
 	}
@@ -392,9 +392,8 @@ void draw_px_index(int16_t x, int16_t y, uint32_t color, void *fb)
 }
 
 void draw_qr_code_index(uint16_t x, uint16_t y, int width_t, int side,
-			uint8_t *bitdata, void *fb,
-			draw_px_func_t draw_px, uint32_t color_bg,
-			uint8_t color_fg)
+			uint8_t *bitdata, void *fb, draw_px_func_t draw_px,
+			uint32_t color_bg, uint8_t color_fg)
 {
 	//PCD8544_Clear();
 	int i = 0;
@@ -404,7 +403,7 @@ void draw_qr_code_index(uint16_t x, uint16_t y, int width_t, int side,
 	int n = 0;
 	int scale = 1;
 
-	memset(fb, color_bg, width_t * width_t);
+	//memset(fb, color_bg, width_t * width_t);
 
 	scale = width_t / side;
 
@@ -587,6 +586,21 @@ esp_err_t display_jpg_file(YEPD *epd, const char *filename)
 	show_ram_space("end of display_jpg_file");
 
 	return ret;
+}
+// Need to free buffer after called!!!
+esp_err_t display_indexed_buffer(YEPD *epd, char *index_buffer)
+{
+	if (show_qr != 0) {
+		draw_QR_to_index_buffer(epd, (uint8_t *)index_buffer);
+	}
+
+	epd->init();
+	epd->fill_index((uint8_t *)index_buffer);
+	epd->update();
+
+	//free(index_buffer);
+
+	return ESP_OK;
 }
 
 esp_err_t display_jpg_numble(YEPD *epd, int num)

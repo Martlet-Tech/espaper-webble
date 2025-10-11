@@ -42,4 +42,6 @@ esp_err_t display_palette(YEPD *epd);
 esp_err_t display_jpg_file(YEPD *epd, const char *filename);
 esp_err_t display_jpg_numble(YEPD *epd, int num);
 
+esp_err_t display_indexed_buffer(YEPD *epd, char *index_buffer);
+
 #endif

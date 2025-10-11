@@ -315,6 +315,7 @@
 
     <h3 id="device_name">Loading...</h3>
     <h5 id="device_res">Loading...</h5>
+    <h5 id="device_palette_str">Loading...</h5>
 
     <div class="image-preview"></div>
 
@@ -371,6 +372,7 @@
     let device_name = '';
     let device_width = 0;
     let device_height = 0;
+    let device_palette_str = '';
 
     const loadLanguage = (lang) => {
       fetch(`/lang_${lang}.json`)
@@ -420,8 +422,6 @@
           simpleCrop = new SimpleCrop({
             src: URL.createObjectURL(files[0]),
             size: {
-              //width: queryParams.width,
-              //height: queryParams.height,
               width: device_width,
               height: device_height,
             },
@@ -450,7 +450,8 @@
               finalCanvas.style.maxWidth = "100%";
               finalCanvas.style.maxHeight = "100%";
 
-              submit(finalCanvas);
+              //submit(finalCanvas);
+              submit_index(finalCanvas);
             },
             uploadCallback: function (src) {
               console.log("uploadCallback " + src);
@@ -464,6 +465,86 @@
       }
       $upload.value = ""; //清空 input value
     });
+
+    // 辅助函数：查找最接近的调色板颜色索引
+    function findClosestColor(r, g, b, palette) {
+      let minDist = Infinity;
+      let index = 0;
+      for (let i = 0; i < palette.length; i++) {
+        const pr = palette[i].r;
+        const pg = palette[i].g;
+        const pb = palette[i].b;
+        const dist = (r - pr) ** 2 + (g - pg) ** 2 + (b - pb) ** 2;
+        if (dist < minDist) {
+          minDist = dist;
+          index = i;
+        }
+      }
+      return index;
+    }
+
+    // Atkinson抖动算法处理函数
+    function applyAtkinsonDither(canvas, palette) {
+      const ctx = canvas.getContext('2d');
+      const { width, height } = canvas;
+      const imageData = ctx.getImageData(0, 0, width, height);
+
+      // 创建浮点数组保持精度
+      const floatData = new Float32Array(imageData.data.length);
+      for (let i = 0; i < imageData.data.length; i++) {
+        floatData[i] = imageData.data[i];
+      }
+
+      // 准备索引存储
+      const indexData = new Uint8Array(width * height);
+
+      // Atkinson误差扩散模式
+      const diffusion = [
+        { dx: 1, dy: 0, weight: 1 / 8 },  // 右侧1像素
+        { dx: 2, dy: 0, weight: 1 / 8 },  // 右侧2像素
+        { dx: -1, dy: 1, weight: 1 / 8 }, // 左下
+        { dx: 0, dy: 1, weight: 1 / 8 },  // 正下
+        { dx: 1, dy: 1, weight: 1 / 8 },  // 右下
+        { dx: 0, dy: 2, weight: 1 / 8 },  // 下下
+      ];
+
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const idx = (y * width + x) * 4;
+
+          // 获取当前像素颜色（四舍五入到整数）
+          const r = Math.round(floatData[idx]);
+          const g = Math.round(floatData[idx + 1]);
+          const b = Math.round(floatData[idx + 2]);
+
+          // 查找最近颜色索引
+          const paletteIndex = findClosestColor(r, g, b, palette);
+          indexData[y * width + x] = paletteIndex;
+
+          // 计算误差
+          const pr = palette[paletteIndex].r;
+          const pg = palette[paletteIndex].g;
+          const pb = palette[paletteIndex].b;
+          const errR = r - pr;
+          const errG = g - pg;
+          const errB = b - pb;
+
+          // 扩散误差到周围像素
+          diffusion.forEach(({ dx, dy, weight }) => {
+            const nx = x + dx;
+            const ny = y + dy;
+            if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+              const nIdx = (ny * width + nx) * 4;
+              floatData[nIdx] += errR * weight;
+              floatData[nIdx + 1] += errG * weight;
+              floatData[nIdx + 2] += errB * weight;
+            }
+          });
+        }
+      }
+
+      return { indexData, width, height };
+    }
 
     function submit(canvas) {
       // 指定导出的图片类型和质量
@@ -521,6 +602,60 @@
       );
     }
 
+    function submit_index(canvas) {
+      // 解析调色板
+      const palette = device_palette_str.split(';').map(colorStr => {
+        const [r, g, b] = colorStr.split(',').map(Number);
+        return { r, g, b };
+      });
+
+      // 应用抖动算法获取索引数据
+      const { indexData, width, height } = applyAtkinsonDither(canvas, palette);
+
+      // 创建二进制Blob
+      const indexBlob = new Blob([indexData], { type: 'application/octet-stream' });
+
+      // 准备表单数据
+      const uploadTimestamp = Date.now();
+      const systemInfo = navigator.userAgent;
+      const formData = new FormData();
+      formData.append("timestamp", uploadTimestamp);
+      formData.append("systemInfo", systemInfo);
+      formData.append("palette", device_palette_str);
+      formData.append("width", width.toString());
+      formData.append("height", height.toString());
+      formData.append("file", new File([indexBlob], "index.bin"));
+      formData.append("last", "last");
+
+      // 发送请求
+      var xhr = new XMLHttpRequest();
+      xhr.open("POST", "/upload");
+      xhr.setRequestHeader("Accept-Language", "en");
+
+      xhr.onload = function () {
+        if (xhr.status === 200) {
+          try {
+            let data = JSON.parse(xhr.response);
+            if (data.code === 200) {
+              showToast(msg_upload_success, "success");
+            } else {
+              showToast(msg_upload_fail, "error");
+            }
+          } catch (e) {
+            showToast(msg_server_error, "error");
+          }
+        } else {
+          showToast(msg_upload_fail, "error");
+        }
+      };
+
+      xhr.onerror = function () {
+        showToast(msg_upload_fail, "error");
+      };
+      xhr.send(formData);
+      showToast("Sending Image ...", "error");
+    }
+
     // 自定义提示函数
     function showToast(message, type) {
       let seconds = 5000;
@@ -534,7 +669,7 @@
       overlay.style.display = "block"; // 显示蒙层
 
       if (type === "success") {
-        seconds = 60000;
+        seconds = 20000;
       }
 
       // 60秒后隐藏提示
@@ -562,9 +697,11 @@
         device_name = data.name;
         device_width = data.width;
         device_height = data.height;
+        device_palette_str = data.palette;
 
         document.getElementById('device_name').textContent = data.name;
         document.getElementById('device_res').textContent = `${data.width} x ${data.height}`;
+        document.getElementById('device_palette_str').textContent = data.palette;
       } catch (error) {
         console.error('Error fetching device info:', error);
       }

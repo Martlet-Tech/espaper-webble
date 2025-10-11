@@ -44,7 +44,7 @@ static const char *TAG = "main";
 extern int display_debug;
 extern int show_qr;
 
-extern YEPD *epd; // global epd pointer, defined in bsp.c
+extern YEPD *gyepd; // global epd pointer, defined in bsp.c
 
 void bsp_gpio_initial(void);
 static esp_err_t save_qr_info(void);
@@ -94,14 +94,14 @@ void app_main(void)
 
 		if (max_jpg_number < 1) {
 			ESP_LOGE(TAG, "jpg_list is NULL");
-			display_palette(epd);
+			display_palette(gyepd);
 		} else {
 			int biggest_file_num =
 				get_file_num_from_index(max_jpg_number - 1);
 			set_current_image_number(biggest_file_num);
 
 			ESP_LOGI(TAG, "jpg_list is not NULL");
-			display_jpg_numble(epd, biggest_file_num);
+			display_jpg_numble(gyepd, biggest_file_num);
 		}
 
 	} else {
@@ -200,12 +200,12 @@ void process_config(const char *file_path)
 		cJSON_GetObjectItem(root, "module")->valuestring;
 
 	// 获取指向 epd_list 对象的指针
-	epd = yepd_find_by_name(module_name);
-	if (epd != NULL) {
+	gyepd = yepd_find_by_name(module_name);
+	if (gyepd != NULL) {
 		printf("EPD details:\n");
-		printf("  Name: %s\n", epd->name);
-		printf("  Width: %d\n", epd->width);
-		printf("  Height: %d\n", epd->height);
+		printf("  Name: %s\n", gyepd->name);
+		printf("  Width: %d\n", gyepd->width);
+		printf("  Height: %d\n", gyepd->height);
 	} else {
 		printf("Invalid EPD index\n");
 	}
