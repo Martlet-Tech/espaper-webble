@@ -17,6 +17,7 @@
 #include <esp_jpeg_enc.h>
 
 extern int display_debug;
+extern int display_show_last;
 
 typedef void (*draw_px_func_t)(int16_t x, int16_t y, uint32_t color, void *fb);
 typedef void (*draw_px_index_func_t)(int16_t x, int16_t y, uint8_t color,
@@ -43,5 +44,7 @@ esp_err_t display_jpg_file(YEPD *epd, const char *filename);
 esp_err_t display_jpg_numble(YEPD *epd, int num);
 
 esp_err_t display_indexed_buffer(YEPD *epd, char *index_buffer);
+void display_last_data(YEPD *epd);
+int is_file_exist(char *filename);
 
 #endif

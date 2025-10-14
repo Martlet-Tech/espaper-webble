@@ -94,7 +94,7 @@ int EL133UF1_Deinit(void);
 const unsigned char spiCsPin[2] = { PIN_CS_M, PIN_CS_S };
 
 static const unsigned char AN_TM_V[9] = { 0xC0, 0x1C, 0x1C, 0xCC, 0xCC,
-				   0xCC, 0x15, 0x15, 0x55 };
+					  0xCC, 0x15, 0x15, 0x55 };
 static const unsigned char CMD66_V[6] = { 0x49, 0x55, 0x13, 0x5D, 0x05, 0x10 };
 static const unsigned char PSR_V[2] = { 0xDF, 0x69 };
 static const unsigned char CDI_V[1] = { 0xF7 };
@@ -420,10 +420,11 @@ int EL133UF1_new_update(void)
 	return 0;
 }
 
-YEPD YMS16001200_1330AAX_E6 ={.name = "YMS16001200-1330AAX-E6",
+YEPD YMS16001200_1330AAX_E6 = {
+	.name = "YMS16001200-1330AAX-E6",
 	.width = 1200,
 	.height = 1600,
-	.palette = "0,0,0;255,255,255;255,255,0;255,0,0;0,0,255;0,255,0",
+	.palette = "0,0,0;255,255,255;255,255,0;180,0,0;0,0,180;0,180,0",
 	.bpp = 4,
 	.init = EL133UF1_new_init,
 	.fill_index = EL133UF1_new_fill_index,
@@ -435,15 +436,21 @@ YEPD YMS16001200_1330AAX_E6 ={.name = "YMS16001200-1330AAX-E6",
 	.pin_sck = 12,
 	.pin_dc = -1,
 	.pin_d = { 11, -1 },
-	.sections = {
-		{.x0 = 0, .y0 = 0, .x1 = 1200/2, .y1 = 1600, .cs_mask = 0x01, .index_to_section = build_data_e6},
-		{.x0 = 1200/2, .y0 = 0, .x1 = 1200/2, .y1 = 1600, .cs_mask = 0x02, .index_to_section = build_data_e6},
-		{.index_to_section = NULL}
-	},
-	.cmd_init = 
-		"00 00 10 a0 ff ff\n"
+	.sections = { { .x0 = 0,
+			.y0 = 0,
+			.x1 = 1200 / 2,
+			.y1 = 1600,
+			.cs_mask = 0x01,
+			.index_to_section = build_data_e6 },
+		      { .x0 = 1200 / 2,
+			.y0 = 0,
+			.x1 = 1200 / 2,
+			.y1 = 1600,
+			.cs_mask = 0x02,
+			.index_to_section = build_data_e6 },
+		      { .index_to_section = NULL } },
+	.cmd_init = "00 00 10 a0 ff ff\n"
 		    "01 02 05 12 34 56 78\n",
-	.cmd_disp = 
-		"00 00 10 a0 ff ff\n"
+	.cmd_disp = "00 00 10 a0 ff ff\n"
 		    "01 02 05 12 34 56 78\n",
 };

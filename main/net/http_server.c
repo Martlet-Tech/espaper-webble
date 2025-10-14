@@ -252,6 +252,9 @@ static esp_err_t upload_post_handler(httpd_req_t *req)
 		ESP_LOGI(TAG, "File upload success, get %d Bytes", offset);
 	}
 
+	sdcard_save_buff((uint8_t *)(psram_data), offset,
+			 SDCARD_MOUNT_POINT "/request.bin");
+
 	// 在接收完数据后添加解析代码
 	size_t index_offset = 0;
 	size_t index_length = 0;
