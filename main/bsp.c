@@ -48,6 +48,7 @@
 #define MAX_FILES 100 // 假设最大图片数量为 100
 
 extern int display_debug;
+extern int display_show_last;
 extern int show_qr;
 
 extern YEPD *gyepd; // global epd pointer, defined in bsp.c

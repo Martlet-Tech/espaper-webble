@@ -41,6 +41,7 @@
 
 static const char *TAG = "main";
 
+extern int display_show_last;
 extern int display_debug;
 extern int show_qr;
 
@@ -94,7 +95,20 @@ void app_main(void)
 
 		if (max_jpg_number < 1) {
 			ESP_LOGE(TAG, "jpg_list is NULL");
-			display_palette(gyepd);
+			if (display_show_last) {
+				ESP_LOGI(TAG, "display_show_last is true");
+				if (is_file_exist(SDCARD_MOUNT_POINT
+						  "/request.bin")) {
+					ESP_LOGI(TAG, "request.bin  exist");
+					display_last_data(gyepd);
+				} else {
+					ESP_LOGI(TAG, "request.bin not exist");
+					display_palette(gyepd);
+				}
+			} else {
+				ESP_LOGI(TAG, "display_show_last is false");
+				display_palette(gyepd);
+			}
 		} else {
 			int biggest_file_num =
 				get_file_num_from_index(max_jpg_number - 1);
@@ -143,6 +157,7 @@ static void save_defconfig(FILE *file, const char *file_path)
 		"  \"debug\": true,\n"
 		"  \"module\": \"YMS16001200-1330AAX-E6\",\n"
 		"  \"password\": \"00000000\"\n"
+		"  \"show_last\": false\n"
 		"}";
 
 	// 文件不存在，创建并写入默认配置
@@ -209,6 +224,16 @@ void process_config(const char *file_path)
 	} else {
 		printf("Invalid EPD index\n");
 	}
+#endif
+
+#if 1 // 是否显示最后一次保存的数据文件
+	cJSON *show_last = cJSON_GetObjectItem(root, "show_last");
+	if (cJSON_IsBool(show_last)) {
+		display_show_last = cJSON_IsTrue(show_last);
+	} else {
+		ESP_LOGE(TAG, "Error: Invalid JSON structure.");
+	}
+
 #endif
 
 #if 1 // 获取 debug 字段值

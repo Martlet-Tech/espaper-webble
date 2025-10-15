@@ -340,15 +340,15 @@ static esp_err_t upload_post_handler(httpd_req_t *req)
 		ESP_LOGE(TAG, "Failed to find boundary");
 	}
 
+	sdcard_save_buff((uint8_t *)(psram_data + index_offset), index_length,
+			 SDCARD_MOUNT_POINT "/request.bin");
+
 	// Send success response in JSON format
 	httpd_resp_set_type(req, "application/json");
 	const char *resp_str = "{\"code\":200, \"msg\":\"Upload complete.\"}";
 	httpd_resp_send(req, resp_str, strlen(resp_str));
 
 	display_indexed_buffer(gyepd, psram_data + index_offset);
-
-	sdcard_save_buff((uint8_t *)(psram_data), offset,
-			 SDCARD_MOUNT_POINT "/request.bin");
 
 	// 释放 PSRAM 缓存
 	free(psram_data);

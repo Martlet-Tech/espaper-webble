@@ -27,6 +27,7 @@
 
 static const char *TAG = "IMG_PRCS";
 int display_debug = 0;
+int display_show_last = 0;
 int show_qr = 0;
 char processing_stage[20] = "idle"; // 初始阶段;
 
@@ -668,4 +669,57 @@ esp_err_t display_palette(YEPD *epd)
 	show_ram_space("end of display_palette");
 
 	return ret;
+}
+
+int is_file_exist(char *filename)
+{
+	FILE *file = fopen(filename, "rb");
+	if (file == NULL) {
+		return 0;
+	}
+	fclose(file);
+	return 1;
+}
+
+void display_data_file(YEPD *epd, char *filename)
+{
+	// 打开sd卡上的/request.bin文件
+	FILE *file = fopen(filename, "rb");
+	if (file == NULL) {
+		ESP_LOGE(TAG, "Failed to open file %s", filename);
+		return;
+	}
+
+	// 获取文件大小
+	fseek(file, 0, SEEK_END);
+	long file_size = ftell(file);
+	fseek(file, 0, SEEK_SET);
+
+	// 读入psram
+	// 申请psram内存
+	uint8_t *psram_buff = heap_caps_malloc(file_size, MALLOC_CAP_SPIRAM);
+	if (psram_buff == NULL) {
+		ESP_LOGE(TAG, "psram_buff malloc fail %lu", file_size);
+		return;
+	}
+	show_ram_space("after malloc psram_buff");
+
+	// 读取文件内容到psram
+	size_t bytes_read = fread(psram_buff, 1, file_size, file);
+	if (bytes_read != file_size) {
+		ESP_LOGE(TAG, "Failed to read %s to psram", filename);
+		fclose(file);
+		free(psram_buff);
+		return;
+	}
+
+	display_indexed_buffer(epd, (char *)psram_buff);
+	show_ram_space("after read file to psram");
+}
+
+void display_last_data(YEPD *epd)
+{
+	if (display_show_last != 0) {
+		display_data_file(epd, SDCARD_MOUNT_POINT "/request.bin");
+	}
 }
