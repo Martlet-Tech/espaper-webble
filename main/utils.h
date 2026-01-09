@@ -16,12 +16,14 @@
 #define GPIO_HIGH 1
 
 #include <stddef.h>
+#include <stdint.h>
 
 void show_ram_space(const char *position_string);
 void delayms(unsigned int delayTime);
 void delay_ms(unsigned int delayTime);
 void delayus(unsigned int delayTime);
 void delay_us(unsigned int delayTime);
+void delay_ns(uint32_t delayTime);
 void safe_free(int **ptr);
 void swap_pixels(unsigned char *a, unsigned char *b);
 int get_max_int_in_array(int *arr, int size);

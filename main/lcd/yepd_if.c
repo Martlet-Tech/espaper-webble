@@ -27,8 +27,7 @@
 #include "yepd_port.h"
 
 static const char TAG[] = "YEPD_IF";
-
-extern spi_device_handle_t spi;
+ spi_device_handle_t spi;
 
 void epd_wbyte_multi(const unsigned char *bytes, unsigned int length)
 {

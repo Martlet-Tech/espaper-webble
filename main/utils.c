@@ -19,10 +19,8 @@
 
 void show_ram_space(const char *position_string)
 {
-	ESP_LOGI("        RAM SPACE",
-		 "Free heap : \t%d bytes, Largest block: \t%d \t@ %s",
-		 heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
-		 heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM),
+	ESP_LOGI("        RAM SPACE", "Free heap : \t%d bytes, Largest block: \t%d \t@ %s",
+		 heap_caps_get_free_size(MALLOC_CAP_SPIRAM), heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM),
 		 position_string);
 }
 
@@ -44,6 +42,16 @@ void delayus(unsigned int delayTime)
 void delay_us(unsigned int delayTime)
 {
 	esp_rom_delay_us(delayTime);
+}
+
+void delay_ns(uint32_t delayTime)
+{
+	// 以 240MHz 为例，1个 nop 约 4ns
+	// 这里的循环次数需要根据实际主频和测试微调
+	uint32_t cycles = delayTime / 4;
+	for (uint32_t i = 0; i < cycles; i++) {
+		asm volatile("nop");
+	}
 }
 
 void safe_free(int **ptr)
@@ -78,8 +86,7 @@ int get_max_int_in_array(int *arr, int size)
 // 生成随机密码的函数
 void generate_random_password(char *password, size_t length)
 {
-	char charset[] =
-		"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+	char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 	for (size_t i = 0; i < length; i++) {
 		int key = esp_random() % (sizeof(charset) - 1);
 		key = key;

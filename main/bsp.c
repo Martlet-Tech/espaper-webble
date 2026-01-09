@@ -59,6 +59,13 @@ void process_config(const char *file_path);
 
 static const char *TAG = "bsp.c";
 
+#define BSP_GPIO_SD_DAT2 GPIO_NUM_35
+#define BSP_GPIO_SD_DAT3 GPIO_NUM_36
+#define BSP_GPIO_SD_CMD GPIO_NUM_37
+#define BSP_GPIO_SD_CLK GPIO_NUM_38
+#define BSP_GPIO_SD_DAT0 GPIO_NUM_39
+#define BSP_GPIO_SD_DAT1 GPIO_NUM_40
+
 sdmmc_card_t *card;
 
 YEPD *gyepd;
@@ -107,8 +114,7 @@ void init_spiffs(void)
 		} else if (ret == ESP_ERR_NOT_FOUND) {
 			ESP_LOGE(TAG, "Failed to find SPIFFS partition");
 		} else {
-			ESP_LOGE(TAG, "Failed to initialize SPIFFS (%s)",
-				 esp_err_to_name(ret));
+			ESP_LOGE(TAG, "Failed to initialize SPIFFS (%s)", esp_err_to_name(ret));
 		}
 		return;
 	}
@@ -116,8 +122,7 @@ void init_spiffs(void)
 	size_t total = 0, used = 0;
 	ret = esp_spiffs_info(NULL, &total, &used);
 	if (ret != ESP_OK) {
-		ESP_LOGE(TAG, "Failed to get SPIFFS partition information (%s)",
-			 esp_err_to_name(ret));
+		ESP_LOGE(TAG, "Failed to get SPIFFS partition information (%s)", esp_err_to_name(ret));
 	} else {
 		ESP_LOGI(TAG, "SPIFFS total: %d, used: %d", total, used);
 	}
@@ -130,39 +135,35 @@ esp_err_t sdcard_mount()
 {
 	esp_err_t ret;
 
-	esp_vfs_fat_sdmmc_mount_config_t mount_config = {
-		.format_if_mount_failed = false,
-		.max_files = 5,
-		.allocation_unit_size = 16 * 1024
-	};
+	esp_vfs_fat_sdmmc_mount_config_t mount_config = { .format_if_mount_failed = false,
+							  .max_files = 5,
+							  .allocation_unit_size = 16 * 1024 };
 
 	const char mount_point[] = SDCARD_MOUNT_POINT;
 	sdmmc_host_t host = SDMMC_HOST_DEFAULT();
 	sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
 	slot_config.width = 4;
-	slot_config.clk = 42;
-	slot_config.cmd = 41;
-	slot_config.d0 = 2;
-	slot_config.d1 = 1;
-	slot_config.d2 = 39;
-	slot_config.d3 = 40;
+	slot_config.clk = BSP_GPIO_SD_CLK;
+	slot_config.cmd = BSP_GPIO_SD_CMD;
+	slot_config.d0 = BSP_GPIO_SD_DAT0;
+	slot_config.d1 = BSP_GPIO_SD_DAT1;
+	slot_config.d2 = BSP_GPIO_SD_DAT2;
+	slot_config.d3 = BSP_GPIO_SD_DAT3;
 	slot_config.flags |= SDMMC_SLOT_FLAG_INTERNAL_PULLUP;
 
-	ret = esp_vfs_fat_sdmmc_mount(mount_point, &host, &slot_config,
-				      &mount_config, &card);
+	ESP_LOGI(TAG, "Start mounting SD card...");
+	ret = esp_vfs_fat_sdmmc_mount(mount_point, &host, &slot_config, &mount_config, &card);
+	ESP_LOGI(TAG, "Mount result: %d", ret);
 
 	if (ret != ESP_OK) {
 		if (ret == ESP_FAIL) {
-			ESP_LOGE(
-				TAG,
-				"Failed to mount filesystem. "
-				"If you want the card to be formatted, set format_if_mount_failed = true.");
+			ESP_LOGE(TAG, "Failed to mount filesystem. "
+				      "If you want the card to be formatted, set format_if_mount_failed = true.");
 		} else {
-			ESP_LOGE(
-				TAG,
-				"Failed to initialize the card (%s). "
-				"Make sure SD card lines have pull-up resistors in place.",
-				esp_err_to_name(ret));
+			ESP_LOGE(TAG,
+				 "Failed to initialize the card (%s). "
+				 "Make sure SD card lines have pull-up resistors in place.",
+				 esp_err_to_name(ret));
 		}
 		return ESP_FAIL;
 	}
@@ -277,8 +278,7 @@ esp_err_t write_to_sdcard(const char *filepath, const char *content)
 		return ESP_FAIL;
 	} else if (fret != strlen(content)) {
 		// 写入的字符数与字符串长度不符，可能存在部分写入失败的情况
-		ESP_LOGW(TAG, "Partial write to file: expected %zu, wrote %d",
-			 strlen(content), fret);
+		ESP_LOGW(TAG, "Partial write to file: expected %zu, wrote %d", strlen(content), fret);
 	}
 
 	fclose(f);
@@ -289,8 +289,7 @@ void sdcard_save_buff(uint8_t *buff, int size, const char *file)
 {
 	// 检查输入参数
 	if (buff == NULL || file == NULL || size <= 0) {
-		ESP_LOGE(TAG, "Invalid arguments: buff=%p, size=%d, file=%s",
-			 buff, size, file);
+		ESP_LOGE(TAG, "Invalid arguments: buff=%p, size=%d, file=%s", buff, size, file);
 		return;
 	}
 
@@ -304,9 +303,7 @@ void sdcard_save_buff(uint8_t *buff, int size, const char *file)
 	// 写入数据
 	size_t written = fwrite(buff, 1, size, f);
 	if (written != size) {
-		ESP_LOGE(TAG,
-			 "Failed to write all data to file: %s. Written: %d/%d",
-			 file, (int)written, size);
+		ESP_LOGE(TAG, "Failed to write all data to file: %s. Written: %d/%d", file, (int)written, size);
 	} else {
 		ESP_LOGI(TAG, "Successfully saved %d bytes to %s", size, file);
 	}
@@ -320,15 +317,12 @@ esp_err_t bsp_create_wifi_qr_str(char **str_buf)
 	wifi_config_t wifi_config;
 	esp_err_t ret = esp_wifi_get_config(WIFI_IF_AP, &wifi_config);
 	if (ret != ESP_OK) {
-		ESP_LOGE(TAG, "Failed to get AP config: %s",
-			 esp_err_to_name(ret));
+		ESP_LOGE(TAG, "Failed to get AP config: %s", esp_err_to_name(ret));
 		return ret;
 	}
 
 	/* 计算需要的内存大小 */
-	int needed_size = snprintf(NULL, 0, "WIFI:T:WPA;S:%s;P:%s;;",
-				   wifi_config.ap.ssid,
-				   wifi_config.ap.password);
+	int needed_size = snprintf(NULL, 0, "WIFI:T:WPA;S:%s;P:%s;;", wifi_config.ap.ssid, wifi_config.ap.password);
 	if (needed_size < 0) {
 		return ESP_FAIL;
 	}
@@ -340,8 +334,7 @@ esp_err_t bsp_create_wifi_qr_str(char **str_buf)
 	}
 
 	/* 生成最终字符串 */
-	sprintf(*str_buf, "WIFI:T:WPA;S:%s;P:%s;;", wifi_config.ap.ssid,
-		wifi_config.ap.password);
+	sprintf(*str_buf, "WIFI:T:WPA;S:%s;P:%s;;", wifi_config.ap.ssid, wifi_config.ap.password);
 
 	return ESP_OK;
 }
@@ -364,8 +357,7 @@ esp_err_t bsp_create_web_qr_str(char **str_buf)
 	const uint8_t ip4 = ip_bytes[3];
 
 	/* 计算需要的内存大小 */
-	int needed_size =
-		snprintf(NULL, 0, "http://%u.%u.%u.%u/", ip1, ip2, ip3, ip4);
+	int needed_size = snprintf(NULL, 0, "http://%u.%u.%u.%u/", ip1, ip2, ip3, ip4);
 	if (needed_size < 0) {
 		return ESP_FAIL;
 	}
@@ -384,17 +376,17 @@ esp_err_t bsp_create_web_qr_str(char **str_buf)
 
 #if 1 // button
 // 定义回调函数
-void callback_1()
+void callback_1(void)
 {
 	printf("GPIO %d callback executed\n", GPIO_IO_NUM_1);
 	show_prev_image(gyepd);
 }
-void callback_2()
+void callback_2(void)
 {
 	printf("GPIO %d callback executed\n", GPIO_IO_NUM_2);
 	show_next_image(gyepd);
 }
-void callback_3()
+void callback_3(void)
 {
 	printf("GPIO %d callback executed\n", GPIO_IO_NUM_3);
 	delete_current_image(gyepd);
@@ -442,38 +434,16 @@ static void IRAM_ATTR gpio_isr_handler(void *arg)
 
 void bsp_gpio_initial(void)
 {
-	gpio_config_t gpiocfg_out_lcd = {};
-	gpiocfg_out_lcd.intr_type = GPIO_INTR_DISABLE;
-	gpiocfg_out_lcd.mode = GPIO_MODE_OUTPUT;
-	gpiocfg_out_lcd.pin_bit_mask = (1ULL << PIN_SW3) | (1ULL << PIN_SW46);
-	gpiocfg_out_lcd.pull_down_en = GPIO_PULLDOWN_DISABLE;
-	gpiocfg_out_lcd.pull_up_en = GPIO_PULLUP_DISABLE;
-	gpio_config(&gpiocfg_out_lcd);
+	gpio_set_direction(PIN_3V3_EN, GPIO_MODE_OUTPUT);
+	// 初始化时关闭3.3V电源
+	gpio_set_level(PIN_3V3_EN, 0);
+}
 
-	/*gpio_config_t io_conf = {
-		.intr_type = GPIO_INTR_NEGEDGE, // 检测下降沿
-		.mode = GPIO_MODE_INPUT, // 输入模式
-		.pin_bit_mask =
-			(1ULL << GPIO_IO_NUM_1) | (1ULL << GPIO_IO_NUM_2) |
-			(1ULL << GPIO_IO_NUM_3) | (1ULL << GPIO_IO_NUM_4),
-		.pull_down_en = GPIO_PULLDOWN_DISABLE,
-		.pull_up_en = GPIO_PULLUP_ENABLE, // 启用上拉
-	};
-	gpio_config(&io_conf);
-
-	// 创建定时器和中断服务
-	for (int i = 0; i < GPIO_NUM; i++) {
-		esp_timer_create_args_t timer_args = {
-			.callback = timer_callback,
-			.arg = &gpio_monitor[i],
-			.dispatch_method = ESP_TIMER_TASK,
-			.name = "gpio_timer"
-		};
-		esp_timer_create(&timer_args, &gpio_monitor[i].timer_handle);
-
-		gpio_isr_handler_add(gpio_monitor[i].gpio_num, gpio_isr_handler,
-				     &gpio_monitor[i]);
-	}*/
+void bsp_peripheral_power(bool on)
+{
+	// 3.3V电源控制
+	gpio_set_level(PIN_3V3_EN, on);
+	ESP_LOGD(TAG, "Peripheral power %s", on ? "on" : "off");
 }
 
 #endif
@@ -500,8 +470,7 @@ int scan_and_sort_images()
 	closedir(dir);
 
 	// 排序图片编号
-	qsort(image_numbers, image_count, sizeof(int),
-	      (int (*)(const void *, const void *))strcmp);
+	qsort(image_numbers, image_count, sizeof(int), (int (*)(const void *, const void *))strcmp);
 
 	return image_count;
 }
@@ -545,8 +514,7 @@ void show_next_image(YEPD *epd)
 		if (image_numbers[i] > current_image_number) {
 			current_image_number = image_numbers[i];
 			char filepath[64];
-			snprintf(filepath, sizeof(filepath), "/sdcard/%d.jpg",
-				 current_image_number);
+			snprintf(filepath, sizeof(filepath), "/sdcard/%d.jpg", current_image_number);
 			printf("Displaying: %s\n", filepath);
 			display_jpg_numble(epd, current_image_number);
 			return;
@@ -556,8 +524,7 @@ void show_next_image(YEPD *epd)
 	// 如果超出范围，回到最小值
 	current_image_number = image_numbers[0];
 	char filepath[64];
-	snprintf(filepath, sizeof(filepath), "/sdcard/%d.jpg",
-		 current_image_number);
+	snprintf(filepath, sizeof(filepath), "/sdcard/%d.jpg", current_image_number);
 	printf("Displaying: %s (looped to first)\n", filepath);
 	display_jpg_numble(epd, current_image_number);
 }
@@ -575,8 +542,7 @@ void show_prev_image(YEPD *epd)
 		if (image_numbers[i] < current_image_number) {
 			current_image_number = image_numbers[i];
 			char filepath[64];
-			snprintf(filepath, sizeof(filepath), "/sdcard/%d.jpg",
-				 current_image_number);
+			snprintf(filepath, sizeof(filepath), "/sdcard/%d.jpg", current_image_number);
 			printf("Displaying: %s\n", filepath);
 			display_jpg_numble(epd, current_image_number);
 			return;
@@ -586,8 +552,7 @@ void show_prev_image(YEPD *epd)
 	// 如果超出范围，回到最大值
 	current_image_number = image_numbers[image_count - 1];
 	char filepath[64];
-	snprintf(filepath, sizeof(filepath), "/sdcard/%d.jpg",
-		 current_image_number);
+	snprintf(filepath, sizeof(filepath), "/sdcard/%d.jpg", current_image_number);
 	printf("Displaying: %s (looped to last)\n", filepath);
 	display_jpg_numble(epd, current_image_number);
 }
@@ -596,11 +561,9 @@ void add_new_image(const char *new_image_path)
 {
 	scan_and_sort_images();
 
-	int new_number =
-		(image_count > 0) ? image_numbers[image_count - 1] + 1 : 1;
+	int new_number = (image_count > 0) ? image_numbers[image_count - 1] + 1 : 1;
 	char new_filepath[64];
-	snprintf(new_filepath, sizeof(new_filepath), "/sdcard/%d.jpg",
-		 new_number);
+	snprintf(new_filepath, sizeof(new_filepath), "/sdcard/%d.jpg", new_number);
 
 	// 假设 new_image_path 是上传文件的路径，进行文件拷贝
 	if (rename(new_image_path, new_filepath) == 0) {
@@ -618,8 +581,7 @@ void delete_current_image()
 	}
 
 	char filepath[64];
-	snprintf(filepath, sizeof(filepath), "/sdcard/%d.jpg",
-		 current_image_number);
+	snprintf(filepath, sizeof(filepath), "/sdcard/%d.jpg", current_image_number);
 	if (unlink(filepath) == 0) {
 		printf("Deleted image: %s\n", filepath);
 	} else {
@@ -643,8 +605,7 @@ void delete_current_image()
 		if (image_numbers[i] < current_image_number) {
 			current_image_number = image_numbers[i];
 			char filepath_next[64];
-			snprintf(filepath_next, sizeof(filepath_next),
-				 "/sdcard/%d.jpg", current_image_number);
+			snprintf(filepath_next, sizeof(filepath_next), "/sdcard/%d.jpg", current_image_number);
 			printf("Displaying: %s\n", filepath_next);
 			display_jpg_numble(gyepd, current_image_number);
 			return;
@@ -654,8 +615,7 @@ void delete_current_image()
 	// 如果没有比当前编号更大的图片，循环到编号最小的文件
 	current_image_number = image_numbers[0];
 	char filepath_first[64];
-	snprintf(filepath_first, sizeof(filepath_first), "/sdcard/%d.jpg",
-		 current_image_number);
+	snprintf(filepath_first, sizeof(filepath_first), "/sdcard/%d.jpg", current_image_number);
 	printf("Displaying: %s (looped to smallest)\n", filepath_first);
 	display_jpg_numble(gyepd, current_image_number);
 }

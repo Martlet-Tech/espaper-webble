@@ -14,9 +14,10 @@
 #include "stdint.h"
 #include "esp_err.h"
 #include "yepd.h"
+#include "stdbool.h"
 
-#define PIN_SW46 46
-#define PIN_SW3 3
+
+#define PIN_3V3_EN 12
 #define GPIO_IO_NUM_1 4 // 修改为实际使用的引脚号
 #define GPIO_IO_NUM_2 5
 #define GPIO_IO_NUM_3 6
@@ -32,6 +33,7 @@ typedef void (*callback_t)(void); // 回调函数类型定义
 extern YEPD *gyepd;
 
 void bsp_gpio_initial(void);
+void bsp_peripheral_power(bool on);
 
 void init_spiffs(void);
 

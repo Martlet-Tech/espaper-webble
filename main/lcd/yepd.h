@@ -38,8 +38,7 @@ typedef struct {
 	uint16_t y1;
 	uint8_t section_fill_cmd;
 	uint8_t cs_mask;
-	void (*index_to_section)(uint16_t x0, uint16_t y0, uint16_t x1,
-				 uint16_t y1, uint8_t *index_buff,
+	void (*index_to_section)(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1, uint8_t *index_buff,
 				 uint8_t *data_buff);
 } YEPD_SECTION;
 
@@ -53,6 +52,7 @@ typedef struct {
 	YEPD_Initial init; // initail gpio, bus, and epd module
 	YEPD_Fill_FB fill_index; // fill index buffer
 	YEPD_Update update; // update deinitial and sleep
+	void (*test)(void);
 
 	YEPD_IF interface;
 	int pin_rst;
@@ -75,6 +75,5 @@ int yepd_display_index(YEPD *epd, uint8_t *index_buffer);
 void yepd_check_high(uint32_t pin);
 void yepd_check_low(uint32_t pin);
 
-void build_data_e6(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1,
-		   uint8_t *index_buff, uint8_t *data_buff);
+void build_data_e6(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1, uint8_t *index_buff, uint8_t *data_buff);
 #endif

@@ -81,8 +81,8 @@
 
 static const char TAG[] = "YMS16001200-1330AAX-E6.c";
 
-void setPinCsAll(unsigned int setLevel);
-void setPinCs(unsigned char csNumber, unsigned int setLevel);
+static void setPinCsAll(unsigned int setLevel);
+static void setPinCs(unsigned char csNumber, unsigned int setLevel);
 
 void EL133UF1_DisplayFrame(const unsigned char *frame_buffer_m,
 			   const unsigned char *frame_buffer_s);
@@ -91,7 +91,7 @@ void EL133UF1_DisplayColor(unsigned char color, unsigned char *frame_buffer_m,
 void EL133UF1_Sleep(void);
 int EL133UF1_Deinit(void);
 
-const unsigned char spiCsPin[2] = { PIN_CS_M, PIN_CS_S };
+static const unsigned char spiCsPin[2] = { PIN_CS_M, PIN_CS_S };
 
 static const unsigned char AN_TM_V[9] = { 0xC0, 0x1C, 0x1C, 0xCC, 0xCC,
 					  0xCC, 0x15, 0x15, 0x55 };
@@ -115,12 +115,12 @@ static const unsigned char DRF_V[1] = { 0x00 };
 static const unsigned char POF_V[1] = { 0x00 };
 //static const unsigned char SPIM_V[1] = { 0x10 };
 
-spi_device_handle_t spi;
+extern spi_device_handle_t spi;
 
-uint8_t *index_buffer = NULL;
-uint8_t *dst_image_buffer_m = NULL;
-uint8_t *dst_image_buffer_s = NULL;
-uint32_t DST_FRAME_SIZE = EPD_FRAME_SIZE;
+static uint8_t *index_buffer = NULL;
+static uint8_t *dst_image_buffer_m = NULL;
+static uint8_t *dst_image_buffer_s = NULL;
+static uint32_t DST_FRAME_SIZE = EPD_FRAME_SIZE;
 
 int EL133UF1_Update(void);
 
@@ -150,11 +150,6 @@ void setPinCsAll(unsigned int setLevel)
 	for (i = 0; i < sizeof(spiCsPin); i++) {
 		epd_set_io(spiCsPin[i], setLevel);
 	}
-}
-
-void setPinCs(unsigned char csNumber, unsigned int setLevel)
-{
-	epd_set_io(spiCsPin[csNumber], setLevel);
 }
 
 //====================================================================

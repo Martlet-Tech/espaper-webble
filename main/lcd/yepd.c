@@ -19,14 +19,16 @@
 #include "YMS400600-040AAX-E6.h"
 #include "YMS800480-073AAX-E6.h"
 #include "YMS16001200-1330AAX-E6.h"
+#include "YMS25601440-3150AAX-E6.h"
+#include "YMS9841304-1248CIH-E5.h"
 
 extern YEPD YMS400600_040AAX_E6;
 extern YEPD YMS800480_073AAX_E6;
 extern YEPD YMS16001200_1330AAX_E6;
 extern YEPD YMS25601440_3150AAX_E6;
+extern YEPD YMS9841304_1248CIH_E5;
 
-void build_data_e6(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1,
-		   uint8_t *index_buff, uint8_t *data_buff)
+void build_data_e6(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1, uint8_t *index_buff, uint8_t *data_buff)
 {
 	uint8_t temp = 0;
 	uint8_t index;
@@ -57,11 +59,8 @@ void build_data_e6(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1,
 }
 
 YEPD *epd_list[] = {
-	&YMS400600_040AAX_E6,
-	&YMS800480_073AAX_E6,
-	&YMS16001200_1330AAX_E6,
-	&YMS25601440_3150AAX_E6,
-	NULL,
+	&YMS400600_040AAX_E6,	 &YMS800480_073AAX_E6,	 &YMS16001200_1330AAX_E6,
+	&YMS25601440_3150AAX_E6, &YMS9841304_1248CIH_E5, NULL,
 };
 
 static int yepd_get_index_by_name(const char *module_name)
@@ -71,11 +70,12 @@ static int yepd_get_index_by_name(const char *module_name)
 	// 遍历 epd_list，直到遇到空对象
 	while (epd_list[index] != NULL) {
 		if (strcmp(epd_list[index]->name, module_name) == 0) {
+			printf("yepd_get_index_by_name success %s\n", module_name);
 			return index; // 找到匹配项，返回索引
 		}
 		index++;
 	}
-
+	printf("yepd_get_index_by_name failed %s\n", module_name);
 	return -1; // 未找到，返回 -1
 }
 
@@ -106,13 +106,11 @@ int yepd_display_index(YEPD *epd, uint8_t *index_buffer)
 		uint32_t width = sec->x1 - sec->x0 + 1;
 		uint32_t height = sec->y1 - sec->y0 + 1;
 		uint32_t pix_cnt = width * height;
-		size_t buff_sz = ((epd->bpp > 8) ? (pix_cnt * (epd->bpp / 8)) :
-						   (pix_cnt / (8 / epd->bpp)));
+		size_t buff_sz = ((epd->bpp > 8) ? (pix_cnt * (epd->bpp / 8)) : (pix_cnt / (8 / epd->bpp)));
 		printf("section %d, data buffer size: %zu", i, buff_sz);
 
 		uint8_t *data_buff = (uint8_t *)yepd_malloc(buff_sz);
-		sec->index_to_section(sec->x0, sec->y0, sec->x1, sec->y1,
-				      index_buffer, data_buff);
+		sec->index_to_section(sec->x0, sec->y0, sec->x1, sec->y1, index_buffer, data_buff);
 
 		// section selection method?
 		for (int i = 0; i < 8; i++) {
@@ -124,8 +122,7 @@ int yepd_display_index(YEPD *epd, uint8_t *index_buffer)
 		}
 
 		// send buff
-		yepd_write(epd, &(sec->section_fill_cmd), 1, data_buff,
-			   buff_sz);
+		yepd_write(epd, &(sec->section_fill_cmd), 1, data_buff, buff_sz);
 
 		// 恢复 CS 引脚高电平（释放）
 		for (int i = 0; i < 8; i++) {

@@ -54,28 +54,36 @@ void process_config(const char *file_path);
 
 void app_main(void)
 {
+	ESP_LOGI(TAG, ">>>>>>>>>>>>>>>>>>Hello world!<<<<<<<<<<<<<<<<");
 	esp_err_t ret;
 
 	// Initialize NVS
 	ret = nvs_flash_init();
-	if (ret == ESP_ERR_NVS_NO_FREE_PAGES ||
-	    ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+	if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
 		ESP_ERROR_CHECK(nvs_flash_erase());
 		ret = nvs_flash_init();
 	}
 	ESP_ERROR_CHECK(ret);
 
-	gpio_install_isr_service(0); // 安装 GPIO 中断服务
 	bsp_gpio_initial();
-	printf("GPIO monitoring initialized.\n");
 
-	gpio_set_level(PIN_SW3, 1);
-	vTaskDelay(20 / portTICK_PERIOD_MS);
-
-	gpio_set_level(PIN_SW46, 1);
-	vTaskDelay(200 / portTICK_PERIOD_MS);
+	// TODO
+	bsp_peripheral_power(true);
 
 	init_spiffs();
+
+	ESP_LOGI(TAG, "yepd initial");
+	gyepd = yepd_find_by_name("YMS9841304-1248CIH-E5");
+	if (gyepd == NULL) {
+		ESP_LOGE(TAG, "yepd not found");
+		return;
+	}
+	gyepd->test();
+
+	while (1) {
+		vTaskDelay(pdMS_TO_TICKS(10));
+		
+	}
 
 	sdcard_mount();
 
@@ -97,8 +105,7 @@ void app_main(void)
 			ESP_LOGE(TAG, "jpg_list is NULL");
 			if (display_show_last) {
 				ESP_LOGI(TAG, "display_show_last is true");
-				if (is_file_exist(SDCARD_MOUNT_POINT
-						  "/request.bin")) {
+				if (is_file_exist(SDCARD_MOUNT_POINT "/request.bin")) {
 					ESP_LOGI(TAG, "request.bin  exist");
 					display_last_data(gyepd);
 				} else {
@@ -110,8 +117,7 @@ void app_main(void)
 				display_palette(gyepd);
 			}
 		} else {
-			int biggest_file_num =
-				get_file_num_from_index(max_jpg_number - 1);
+			int biggest_file_num = get_file_num_from_index(max_jpg_number - 1);
 			set_current_image_number(biggest_file_num);
 
 			ESP_LOGI(TAG, "jpg_list is not NULL");
@@ -151,14 +157,13 @@ static esp_err_t save_qr_info(void)
 static void save_defconfig(FILE *file, const char *file_path)
 {
 	// 默认配置 JSON 字符串
-	const char *default_config =
-		"{\n"
-		"  \"mode\": \"0\",\n"
-		"  \"debug\": true,\n"
-		"  \"module\": \"YMS16001200-1330AAX-E6\",\n"
-		"  \"password\": \"00000000\",\n"
-		"  \"show_last\": false\n"
-		"}";
+	const char *default_config = "{\n"
+				     "  \"mode\": \"0\",\n"
+				     "  \"debug\": true,\n"
+				     "  \"module\": \"YMS16001200-1330AAX-E6\",\n"
+				     "  \"password\": \"00000000\",\n"
+				     "  \"show_last\": false\n"
+				     "}";
 
 	// 文件不存在，创建并写入默认配置
 	file = fopen(file_path, "w");
@@ -168,15 +173,13 @@ static void save_defconfig(FILE *file, const char *file_path)
 	}
 
 	// 写入默认配置
-	size_t written =
-		fwrite(default_config, 1, strlen(default_config), file);
+	size_t written = fwrite(default_config, 1, strlen(default_config), file);
 	fclose(file);
 
 	if (written == strlen(default_config)) {
 		printf("Default config saved to: %s\n", file_path);
 	} else {
-		printf("Failed to write full default config to: %s\n",
-		       file_path);
+		printf("Failed to write full default config to: %s\n", file_path);
 	}
 }
 // 读取 JSON 文件并解析
@@ -211,8 +214,7 @@ void process_config(const char *file_path)
 
 	// 获取 JSON 字段
 #if 1 // 获取 module 字段值, 设定 EPD 模块
-	const char *module_name =
-		cJSON_GetObjectItem(root, "module")->valuestring;
+	const char *module_name = cJSON_GetObjectItem(root, "module")->valuestring;
 
 	// 获取指向 epd_list 对象的指针
 	gyepd = yepd_find_by_name(module_name);

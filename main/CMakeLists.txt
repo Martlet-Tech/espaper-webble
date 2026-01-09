@@ -1,3 +1,5 @@
+file(GLOB LCD_SOURCES "lcd/*.c")
+
 idf_component_register(
 	SRCS 		"main.c"
 			"ugui/ugui.c"
@@ -7,12 +9,7 @@ idf_component_register(
 			"net/ap.c"
 			"net/http_server.c"
 			"img_proc/img_proc.c"
-			"lcd/yepd_if.c"
-			"lcd/yepd.c"
-			"lcd/YMS400600-040AAX-E6.c"
-			"lcd/YMS800480-073AAX-E6.c"
-			"lcd/YMS16001200-1330AAX-E6.c"
-			"lcd/YMS25601440-3150AAX-E6.c"
+			${LCD_SOURCES}
 			"pmic/IST9201.c"
 			"arduino_wrapper.c"
 

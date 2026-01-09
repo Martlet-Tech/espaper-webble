@@ -1,6 +1,7 @@
 dependencies:
   espressif/esp_new_jpeg:
-    component_hash: 65aebeb8161e29bc53f650e52d24d2b6509f40f80528be0689f225c9b9003547
+    component_hash: 
+      65aebeb8161e29bc53f650e52d24d2b6509f40f80528be0689f225c9b9003547
     dependencies: []
     source:
       registry_url: https://components.espressif.com/
@@ -18,7 +19,7 @@ dependencies:
   idf:
     source:
       type: idf
-    version: 5.3.1
+    version: 5.5.2
 direct_dependencies:
 - espressif/esp_new_jpeg
 - idf
