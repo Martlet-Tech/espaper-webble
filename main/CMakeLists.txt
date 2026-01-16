@@ -12,6 +12,7 @@ idf_component_register(
 			${LCD_SOURCES}
 			"pmic/IST9201.c"
 			"arduino_wrapper.c"
+			"ble/gatts_table.c"
 
         INCLUDE_DIRS 	"."
 			"lcd"
@@ -21,5 +22,9 @@ idf_component_register(
 			"ugui"
 			"QRLib"
 			"pmic"
+			"ble"
 	# EMBED_FILES 	"web/favicon.ico" "web/upload_script.html"
+	PRIV_REQUIRES bt nvs_flash
+	REQUIRES driver spi_flash fatfs sdmmc spiffs vfs esp_http_server
+
 )

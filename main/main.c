@@ -38,6 +38,7 @@
 #include "utils.h"
 #include "yepd_if.h"
 #include "yepd.h"
+#include "gatts_table.h"
 
 static const char *TAG = "main";
 
@@ -72,6 +73,8 @@ void app_main(void)
 
 	init_spiffs();
 
+	gatts_main();
+
 	ESP_LOGI(TAG, "yepd initial");
 	gyepd = yepd_find_by_name("YMS9841304-1248CIH-E5");
 	if (gyepd == NULL) {
@@ -82,7 +85,6 @@ void app_main(void)
 
 	while (1) {
 		vTaskDelay(pdMS_TO_TICKS(10));
-		
 	}
 
 	sdcard_mount();
