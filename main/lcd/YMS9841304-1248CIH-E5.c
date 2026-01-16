@@ -879,8 +879,6 @@ static void Epaper_Load_Image_M2(uint8_t *image)
 
 static void display_blooming(void)
 {
-	///////////////////////////////////////////////////////////////
-
 	LED0_ON();
 	EPD_init(); //EPD init
 	Epaper_Load_Image_S1((uint8_t *)gImage_IMG2); /// 1 656*492
@@ -907,6 +905,184 @@ static void display_blooming(void)
 	EPD_W21_WriteDATA_ALL(0xA5);
 
 	LED0_OFF();
+}
+
+// 2bpp 下，每字节包含 4 个像素
+#define PIXELS_PER_BYTE 4
+
+/**
+ * 从原始大图中提取出一个子区域并加载到对应的芯片
+ * @param source 完整的大图缓冲区 (1304 * 984 / 4 字节)
+ * @param start_x 子块起始像素 X 坐标
+ * @param start_y 子块起始像素 Y 坐标
+ * @param width 子块宽度（像素）
+ * @param height 子块高度（像素）
+ * @param load_func 对应的驱动加载函数指针 (例如 Epaper_Load_Image_S1)
+ */
+static void extract_and_load_sub_image(uint8_t *source, int start_x, int start_y, int width, int height,
+				       void (*load_func)(uint8_t *))
+{
+	// 计算子块每一行需要的字节数
+	int row_bytes = width / PIXELS_PER_BYTE;
+	// 整个大图（1304像素宽）每一行的字节数
+	int total_stride = 1304 / PIXELS_PER_BYTE;
+
+	// 分配临时缓冲区用于存放裁剪后的子块数据
+	uint8_t *sub_buff = (uint8_t *)malloc(row_bytes * height);
+	if (!sub_buff) {
+		ESP_LOGE("EPD", "Sub-buffer malloc failed!");
+		return;
+	}
+
+	for (int y = 0; y < height; y++) {
+		// 计算大图中的起始字节位置
+		// 纵向偏移：(start_y + y) 行
+		// 横向偏移：start_x / 4 字节
+		int source_offset = (start_y + y) * total_stride + (start_x / PIXELS_PER_BYTE);
+
+		// 将大图中的这一行子数据拷贝到临时缓冲区的对应行
+		memcpy(sub_buff + (y * row_bytes), source + source_offset, row_bytes);
+	}
+
+	// 调用驱动层的加载函数，通过 SPI 发送给对应的芯片
+	load_func(sub_buff);
+
+	// 释放临时内存
+	free(sub_buff);
+}
+
+static inline uint8_t reflect_byte_2bpp(uint8_t b)
+{
+	return ((b & 0x03) << 6) | ((b & 0x0C) << 2) | ((b & 0x30) >> 2) | ((b & 0xC0) >> 6);
+}
+#if 0
+static int display_index_buff(uint8_t *datas, size_t size)
+{
+	if (datas == NULL || size != 1304 * 984 / 4)
+		return -1;
+
+	LED0_ON();
+	EPD_init(); // 初始化电子纸
+	unsigned int column, row;
+	EPD_W21_WriteCMD_M1(0x10);
+	for (column = 492; column < 984; column++)
+		for (row = 0; row < 648 / 4; row++) {
+			EPD_W21_WriteDATA_M1(datas[row + column * 326]);
+		}
+
+	////////S1 part//////////656*492
+	EPD_W21_WriteCMD_S1(0x10);
+	for (column = 492; column < 984; column++)
+		for (row = 648 / 4; row < 1304 / 4; row++) {
+			EPD_W21_WriteDATA_S1(datas[row + column * 326]);
+		}
+
+	////////M2 part//////////656*492
+	EPD_W21_WriteCMD_M2(0x10);
+	for (column = 0; column < 492; column++)
+		for (row = 648 / 4; row < 1304 / 4; row++) {
+			EPD_W21_WriteDATA_M2(datas[row + column * 326]);
+		}
+	////////S2 part//////////648*492
+	EPD_W21_WriteCMD_S2(0x10);
+	for (column = 0; column < 492; column++)
+		for (row = 0; row < 648 / 4; row++) {
+			EPD_W21_WriteDATA_S2(datas[row + column * 326]);
+		}
+
+	// 2. 执行统一刷屏指令 (保持原样)
+	EPD_W21_WriteCMD_ALL(0x04);
+	EPD_lcd_chkstatus();
+	EPD_lcd_chkstatus1();
+	delay_ms(300);
+
+	EPD_W21_WriteCMD_ALL(0x12); // DISPLAY REFRESH
+	EPD_W21_WriteDATA_ALL(1);
+	EPD_lcd_chkstatus();
+	EPD_lcd_chkstatus1();
+
+	EPD_W21_WriteCMD_ALL(0x02);
+	EPD_W21_WriteDATA_ALL(0x00);
+	EPD_lcd_chkstatus();
+	EPD_lcd_chkstatus1();
+
+	EPD_W21_WriteCMD_ALL(0x07);
+	EPD_W21_WriteDATA_ALL(0xA5);
+
+	LED0_OFF();
+
+	ESP_LOGI("EPD", "全屏刷新指令已下发");
+	return 0;
+}
+#endif
+static int display_index_buff(uint8_t *datas, size_t size)
+{
+	if (datas == NULL || size != 1304 * 984 / 4)
+		return -1;
+
+	LED0_ON();
+	EPD_init();
+
+	int column, row;
+	const int STRIDE = 326; // 1304 / 4
+
+	// --- M1 Part (下半部左侧 648*492): 保持原样 ---
+	EPD_W21_WriteCMD_M1(0x10);
+	for (column = 492; column < 984; column++) {
+		for (row = 0; row < 648 / 4; row++) {
+			EPD_W21_WriteDATA_M1(datas[row + column * STRIDE]);
+		}
+	}
+
+	// --- S1 Part (下半部右侧 656*492): 保持原样 ---
+	EPD_W21_WriteCMD_S1(0x10);
+	for (column = 492; column < 984; column++) {
+		for (row = 648 / 4; row < 1304 / 4; row++) {
+			EPD_W21_WriteDATA_S1(datas[row + column * STRIDE]);
+		}
+	}
+
+	// --- M2 Part (上半部右侧 656*492): 旋转 180 度 ---
+	// 逻辑：行从 491 倒序到 0，列从右向左倒序取字节并翻转位
+	EPD_W21_WriteCMD_M2(0x10);
+	for (column = 491; column >= 0; column--) {
+		for (row = 1304 / 4 - 1; row >= 648 / 4; row--) {
+			uint8_t b = datas[row + column * STRIDE];
+			EPD_W21_WriteDATA_M2(reflect_byte_2bpp(b));
+		}
+	}
+
+	// --- S2 Part (上半部左侧 648*492): 旋转 180 度 ---
+	EPD_W21_WriteCMD_S2(0x10);
+	for (column = 491; column >= 0; column--) {
+		for (row = 648 / 4 - 1; row >= 0; row--) {
+			uint8_t b = datas[row + column * STRIDE];
+			EPD_W21_WriteDATA_S2(reflect_byte_2bpp(b));
+		}
+	}
+
+	// --- 刷屏触发指令 ---
+	EPD_W21_WriteCMD_ALL(0x04);
+	EPD_lcd_chkstatus();
+	EPD_lcd_chkstatus1();
+	delay_ms(300);
+
+	EPD_W21_WriteCMD_ALL(0x12);
+	EPD_W21_WriteDATA_ALL(1);
+	EPD_lcd_chkstatus();
+	EPD_lcd_chkstatus1();
+
+	EPD_W21_WriteCMD_ALL(0x02);
+	EPD_W21_WriteDATA_ALL(0x00);
+	EPD_lcd_chkstatus();
+	EPD_lcd_chkstatus1();
+
+	EPD_W21_WriteCMD_ALL(0x07);
+	EPD_W21_WriteDATA_ALL(0xA5);
+
+	LED0_OFF();
+	ESP_LOGI("EPD", "旋转补偿刷新完成");
+	return 0;
 }
 
 void display_White(void)
@@ -1145,28 +1321,30 @@ int YMS9841304_new_update(void)
 	return 0;
 }
 
-void my_task(void *pvParameter)
+static void my_task(void *pvParameter)
 {
 	YMS9841304_new_init();
 
-	while (1) {
-		display_blooming();
-		vTaskDelay(pdMS_TO_TICKS(1000));
+	//while (1) {
+	//display_blooming();
+	//vTaskDelay(pdMS_TO_TICKS(1000));
 
-		display_test_WHITE();
-		vTaskDelay(pdMS_TO_TICKS(1000));
-		display_test_BLACK();
+	display_test_WHITE();
+	vTaskDelay(pdMS_TO_TICKS(1000));
+	/*display_test_BLACK();
 		vTaskDelay(pdMS_TO_TICKS(1000));
 		display_test_Yellow();
 		vTaskDelay(pdMS_TO_TICKS(1000));
 		display_test_Red();
-		vTaskDelay(pdMS_TO_TICKS(1000));
-	}
+		vTaskDelay(pdMS_TO_TICKS(1000));*/
+	//}
+	// 结束任务
+	vTaskDelete(NULL);
 }
 
 void test_YMS9841304_1248CIH_E5(void)
 {
-	BaseType_t xReturned = xTaskCreate(my_task, "my_task", 4096, NULL, 5, NULL);
+	xTaskCreate(my_task, "my_task", 4096, NULL, 5, NULL);
 
 	ESP_LOGI(TAG, "test_YMS9841304_1248CIH_E5 finish");
 }
@@ -1192,6 +1370,7 @@ YEPD YMS9841304_1248CIH_E5 = {
 	.fill_index = YMS9841304_new_fill_index,
 	.update = YMS9841304_new_update,
 	.test = test_YMS9841304_1248CIH_E5,
+	.display_index = display_index_buff,
 	.interface = YEPD_IF_SPI8S,
 	.pin_rst = 21,
 	.pin_busy = 14,

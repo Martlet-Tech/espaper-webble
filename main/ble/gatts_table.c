@@ -62,6 +62,11 @@ const char *SAMPLE_DEVICE_NAME = "YESEPD_GATTS_DEMO";
 
 YEPD *epd = NULL;
 
+#define DATA_CHUNK_SIZE 490 // 对应前端的 CHUNK_SIZE
+static uint8_t *ble_rx_buffer = NULL;
+static uint32_t expected_total_size = 0;
+static uint32_t received_bytes = 0;
+
 typedef enum {
 	CMD_RESET_EPD = 0x00, //reset epd
 	CMD_SET_EPD_NAME = 0x01, //set epd name, 0x01, name_len, name
@@ -176,6 +181,18 @@ struct gatts_profile_inst {
 	uint16_t descr_handle;
 	esp_bt_uuid_t descr_uuid;
 };
+
+static void display_task(void *pvParameter)
+{
+	epd->display_index(ble_rx_buffer, received_bytes);
+
+	//free(ble_rx_buffer);
+	received_bytes = 0;
+	expected_total_size = 0;
+
+	// 结束任务
+	vTaskDelete(NULL);
+}
 
 static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_if,
 					esp_ble_gatts_cb_param_t *param);
@@ -484,6 +501,14 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
 		}
 	} break;
 	case ESP_GATTS_WRITE_EVT: {
+		uint8_t *data = param->write.value;
+		uint16_t len = param->write.len;
+
+		if (len < 1)
+			return;
+
+		//uint8_t cmd = data[0];
+
 		if (!param->write.is_prep) {
 			// the data length of gattc write  must be less than GATTS_DEMO_CHAR_VAL_LEN_MAX.
 			ESP_LOGI(TAG, "GATT_WRITE_EVT, handle = %d, value len = %d, value :", param->write.handle,
@@ -536,13 +561,60 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
 				break;
 			case CMD_START_WRITE_DATA:
 				ESP_LOGI(TAG, "CMD_START_WRITE_DATA");
+
+				// 格式: 0x03 + 4字节总大小 (大端)
+				if (len >= 5) {
+					expected_total_size = (data[1] << 24) | (data[2] << 16) | (data[3] << 8) |
+							      data[4];
+					received_bytes = 0;
+
+					// 如果之前有没释放的内存，先释放
+					if (ble_rx_buffer) {
+						free(ble_rx_buffer);
+					}
+
+					ble_rx_buffer = (uint8_t *)malloc(expected_total_size);
+					if (ble_rx_buffer == NULL) {
+						ESP_LOGE(TAG, "内存分配失败，大小: %ld", expected_total_size);
+					} else {
+						ESP_LOGI(TAG, "开始接收数据，预期总大小: %ld 字节",
+							 expected_total_size);
+					}
+				}
 				break;
-			case CMD_CURRENT_PACKET_INDEX:
+			case CMD_CURRENT_PACKET_INDEX: {
 				ESP_LOGI(TAG, "CMD_CURRENT_PACKET_INDEX");
-				break;
-			case CMD_END_WRITE_DATA:
+
+				// 格式: 0x04 + 4字节包编号 + 490字节数据
+				if (ble_rx_buffer && len > 5) {
+					uint32_t packet_index = (data[1] << 24) | (data[2] << 16) | (data[3] << 8) |
+								data[4];
+					uint32_t offset = packet_index * DATA_CHUNK_SIZE;
+					uint16_t payload_len = len - 5;
+
+					// 安全检查：防止越界写入
+					if (offset + payload_len > expected_total_size) {
+						payload_len = expected_total_size - offset;
+						ESP_LOGW(TAG, "检测到尾部填充，已截断 payload 长度至: %ld",
+							 payload_len);
+					}
+
+					if (offset < expected_total_size) {
+						memcpy(ble_rx_buffer + offset, &data[5], payload_len);
+						received_bytes += payload_len;
+					}
+				}
+			} break;
+			case CMD_END_WRITE_DATA: {
 				ESP_LOGI(TAG, "CMD_END_WRITE_DATA");
-				break;
+				ESP_LOGI(TAG, "数据传输完成。总接收: %ld / 预期: %ld", received_bytes,
+					 expected_total_size);
+
+				if (received_bytes == expected_total_size) {
+					// 创建任务来处理显示
+					xTaskCreate(display_task, "display_task", 8192, NULL, 5, NULL);
+				}
+			} break;
 			default:
 				ESP_LOGW(TAG, "unknown epd cmd %d", epd_cmd);
 				break;

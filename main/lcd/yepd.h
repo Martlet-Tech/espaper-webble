@@ -15,6 +15,7 @@
 #include <stddef.h>
 
 typedef int (*YEPD_Fill_FB)(uint8_t *buff);
+typedef int (*YEPD_Display_Index_Buff)(uint8_t *buff, size_t size);
 typedef int (*YEPD_Initial)(void);
 typedef int (*YEPD_Update)(void);
 
@@ -52,6 +53,8 @@ typedef struct {
 	YEPD_Initial init; // initail gpio, bus, and epd module
 	YEPD_Fill_FB fill_index; // fill index buffer
 	YEPD_Update update; // update deinitial and sleep
+	YEPD_Display_Index_Buff display_index; // display index buffer
+
 	void (*test)(void);
 
 	YEPD_IF interface;
