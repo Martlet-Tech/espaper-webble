@@ -54,6 +54,7 @@ typedef struct {
 	YEPD_Fill_FB fill_index; // fill index buffer
 	YEPD_Update update; // update deinitial and sleep
 	YEPD_Display_Index_Buff display_index; // display index buffer
+	void (*deinit)(void);
 
 	void (*test)(void);
 

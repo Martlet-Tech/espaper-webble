@@ -66,11 +66,6 @@ void app_main(void)
 	}
 	ESP_ERROR_CHECK(ret);
 
-	bsp_gpio_initial();
-
-	// TODO
-	bsp_peripheral_power(true);
-
 	init_spiffs();
 
 	gatts_main();
@@ -82,6 +77,7 @@ void app_main(void)
 		return;
 	}
 	gyepd->test();
+	ESP_LOGI(TAG, "test finish");
 
 	while (1) {
 		vTaskDelay(pdMS_TO_TICKS(10));
