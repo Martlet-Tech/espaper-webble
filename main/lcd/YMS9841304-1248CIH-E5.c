@@ -115,6 +115,23 @@ static void gpio_initial(void)
 	ESP_LOGI(TAG, "YMS9841304 gpio initial finish");
 }
 
+static void gpio_deinitial(void)
+{
+	gpio_set_direction(PIN_CS_M1, GPIO_MODE_DISABLE);
+	gpio_set_direction(PIN_BS, GPIO_MODE_DISABLE);
+	gpio_set_direction(PIN_BUSY_M1, GPIO_MODE_DISABLE);
+	gpio_set_direction(PIN_RESET, GPIO_MODE_DISABLE);
+	gpio_set_direction(PIN_DC, GPIO_MODE_DISABLE);
+	gpio_set_direction(PIN_CS_S1, GPIO_MODE_DISABLE);
+	gpio_set_direction(PIN_SCK, GPIO_MODE_DISABLE);
+	gpio_set_direction(PIN_MOSI, GPIO_MODE_DISABLE);
+	gpio_set_direction(PIN_CS_S2, GPIO_MODE_DISABLE);
+	gpio_set_direction(PIN_BUSY_M2, GPIO_MODE_DISABLE);
+	gpio_set_direction(PIN_CS_M2, GPIO_MODE_DISABLE);
+	vTaskDelay(pdMS_TO_TICKS(10));
+	ESP_LOGI(TAG, "YMS9841304 gpio initial finish");
+}
+
 static void LED0_ON(void)
 {
 }
@@ -127,7 +144,7 @@ static void driver_delay_xms(uint32_t n)
 	vTaskDelay(pdMS_TO_TICKS(n));
 }
 
-void EPD_W21_Init(void)
+static void EPD_W21_Init(void)
 {
 	EPD_W21_CS_M1_1;
 	EPD_W21_CS_S1_1;
@@ -673,6 +690,8 @@ static int display_index_buff(uint8_t *datas, size_t size)
 	EPD_W21_WriteDATA_ALL(0xA5);
 	ESP_LOGI(TAG, "cmd 07 发送完成");
 
+	gpio_deinitial();
+
 	gpio_set_level(PIN_PWR, 0);
 	ESP_LOGI(TAG, "电源关闭");
 	return 0;
@@ -778,6 +797,7 @@ void display_Yellow(void)
 	}
 }
 
+static void display_test_WHITE(void) __attribute__((unused));
 static void display_test_WHITE(void)
 {
 	///////////////////////////////////////////////////////////////
@@ -803,9 +823,6 @@ static void display_test_WHITE(void)
 
 	EPD_W21_WriteCMD_ALL(0x07);
 	EPD_W21_WriteDATA_ALL(0xA5);
-	EPD_lcd_chkstatus();
-	EPD_lcd_chkstatus1();
-	vTaskDelay(pdMS_TO_TICKS(32000));
 
 	LED0_OFF();
 }
@@ -941,6 +958,11 @@ static void my_task(void *pvParameter)
 		display_test_Red();
 		vTaskDelay(pdMS_TO_TICKS(1000));*/
 	//}
+	gpio_deinitial();
+
+	gpio_set_level(PIN_PWR, 0);
+	ESP_LOGI(TAG, "电源关闭");
+
 	// 结束任务
 	vTaskDelete(NULL);
 }

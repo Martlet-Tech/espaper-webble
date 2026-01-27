@@ -158,9 +158,10 @@ static esp_ble_adv_data_t scan_rsp_data = {
 };
 #endif /* CONFIG_SET_RAW_ADV_DATA */
 
+// 广播参数
 static esp_ble_adv_params_t adv_params = {
-	.adv_int_min = 0x20,
-	.adv_int_max = 0x40,
+	.adv_int_min = 0x320,
+	.adv_int_max = 0x320,
 	.adv_type = ADV_TYPE_IND,
 	.own_addr_type = BLE_ADDR_TYPE_PUBLIC,
 	.channel_map = ADV_CHNL_ALL,
@@ -689,7 +690,7 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
 		conn_params.latency = 0;
 		conn_params.max_int = 0x20; // max_int = 0x20*1.25ms = 40ms
 		conn_params.min_int = 0x10; // min_int = 0x10*1.25ms = 20ms
-		conn_params.timeout = 400; // timeout = 400*10ms = 4000ms
+		conn_params.timeout = 3000; // timeout = 400*10ms = 4000ms
 		//start sent the update connection parameters to the peer device.
 		esp_ble_gap_update_conn_params(&conn_params);
 	} break;
@@ -772,6 +773,9 @@ void gatts_main(void)
 	ESP_ERROR_CHECK(esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT));
 
 	esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
+	bt_cfg.sleep_mode = 1;
+	//bt_cfg.sleep_clock = 1;
+	bt_cfg.bluetooth_mode = ESP_BT_MODE_BLE;
 	ret = esp_bt_controller_init(&bt_cfg);
 	if (ret) {
 		ESP_LOGE(TAG, "%s enable controller failed: %s", __func__, esp_err_to_name(ret));

@@ -25,6 +25,7 @@
 #include "esp_spiffs.h"
 #include "esp_vfs.h"
 #include "esp_vfs_fat.h"
+#include "esp_pm.h"
 #include "driver/sdmmc_host.h"
 #include "sdmmc_cmd.h"
 #include "qr_encode.h"
@@ -49,7 +50,7 @@ extern int show_qr;
 extern YEPD *gyepd; // global epd pointer, defined in bsp.c
 
 void bsp_gpio_initial(void);
-static esp_err_t save_qr_info(void);
+static esp_err_t save_qr_info(void) __attribute__((unused));
 
 void process_config(const char *file_path);
 
@@ -57,6 +58,15 @@ void app_main(void)
 {
 	ESP_LOGI(TAG, ">>>>>>>>>>>>>>>>>>Hello world!<<<<<<<<<<<<<<<<");
 	esp_err_t ret;
+
+	esp_pm_config_t pm_config = {
+		.max_freq_mhz = 160, // 建议 160MHz，比 240MHz 更省电且足以处理 BLE
+		.min_freq_mhz = 40, // 自动降频的下限（通常为 XTAL 频率）
+#if CONFIG_FREERTOS_USE_TICKLESS_IDLE
+		.light_sleep_enable = true // 必须在 menuconfig 中开启 Tickless Idle
+#endif
+	};
+	ESP_ERROR_CHECK(esp_pm_configure(&pm_config));
 
 	// Initialize NVS
 	ret = nvs_flash_init();
@@ -80,8 +90,15 @@ void app_main(void)
 	ESP_LOGI(TAG, "test finish");
 
 	while (1) {
-		vTaskDelay(pdMS_TO_TICKS(10));
+		esp_pm_dump_locks(stdout);
+		vTaskDelay(pdMS_TO_TICKS(5000));
 	}
+
+	ESP_LOGI(TAG, "app main finish");
+	return;
+
+#if 0
+	
 
 	sdcard_mount();
 
@@ -125,6 +142,7 @@ void app_main(void)
 	} else {
 		ESP_LOGE(TAG, "sdcard test failed");
 	}
+#endif
 }
 
 static esp_err_t save_qr_info(void)
