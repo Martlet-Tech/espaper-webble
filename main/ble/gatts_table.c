@@ -183,18 +183,6 @@ struct gatts_profile_inst {
 	esp_bt_uuid_t descr_uuid;
 };
 
-static void display_task(void *pvParameter)
-{
-	epd->display_index(ble_rx_buffer, received_bytes);
-
-	//free(ble_rx_buffer);
-	received_bytes = 0;
-	expected_total_size = 0;
-
-	// 结束任务
-	vTaskDelete(NULL);
-}
-
 static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_if,
 					esp_ble_gatts_cb_param_t *param);
 
@@ -293,6 +281,8 @@ static const esp_gatts_attr_db_t gatt_db[HRS_IDX_NB] = {
 			       sizeof(char_value), (uint8_t *)char_value } },
 
 };
+
+static void display_task(void *pvParameter);
 
 static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
 {
@@ -716,20 +706,35 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
 
 			esp_ble_gatts_start_service(gatt_handle_table[IDX_SVC]);
 		}
-		break;
-	}
-#if 1
-	case ESP_GATTS_STOP_EVT:
-	case ESP_GATTS_OPEN_EVT:
-	case ESP_GATTS_CANCEL_OPEN_EVT:
-	case ESP_GATTS_CLOSE_EVT:
-	case ESP_GATTS_LISTEN_EVT:
-	case ESP_GATTS_CONGEST_EVT:
-	case ESP_GATTS_UNREG_EVT:
-	case ESP_GATTS_DELETE_EVT:
-	default:
-		break;
-#endif
+
+	} break;
+	case ESP_GATTS_STOP_EVT: {
+		ESP_LOGI(TAG, "ESP_GATTS_STOP_EVT");
+	} break;
+	case ESP_GATTS_OPEN_EVT: {
+		ESP_LOGI(TAG, "ESP_GATTS_OPEN_EVT");
+	} break;
+	case ESP_GATTS_CANCEL_OPEN_EVT: {
+		ESP_LOGI(TAG, "ESP_GATTS_CANCEL_OPEN_EVT");
+	} break;
+	case ESP_GATTS_CLOSE_EVT: {
+		ESP_LOGI(TAG, "ESP_GATTS_CLOSE_EVT");
+	} break;
+	case ESP_GATTS_LISTEN_EVT: {
+		ESP_LOGI(TAG, "ESP_GATTS_LISTEN_EVT");
+	} break;
+	case ESP_GATTS_CONGEST_EVT: {
+		ESP_LOGI(TAG, "ESP_GATTS_CONGEST_EVT");
+	} break;
+	case ESP_GATTS_UNREG_EVT: {
+		ESP_LOGI(TAG, "ESP_GATTS_UNREG_EVT");
+	} break;
+	case ESP_GATTS_DELETE_EVT: {
+		ESP_LOGI(TAG, "ESP_GATTS_DELETE_EVT");
+	} break;
+	default: {
+		ESP_LOGI(TAG, "default event %d", event);
+	} break;
 	}
 }
 
@@ -822,4 +827,16 @@ void gatts_main(void)
 	if (local_mtu_ret) {
 		ESP_LOGE(TAG, "set local  MTU failed, error code = %x", local_mtu_ret);
 	}
+}
+
+static void display_task(void *pvParameter)
+{
+	epd->display_index(ble_rx_buffer, received_bytes);
+
+	//free(ble_rx_buffer);
+	received_bytes = 0;
+	expected_total_size = 0;
+
+	// 结束任务
+	vTaskDelete(NULL);
 }
