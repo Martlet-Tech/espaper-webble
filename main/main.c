@@ -68,6 +68,11 @@ void app_main(void)
 	};
 	ESP_ERROR_CHECK(esp_pm_configure(&pm_config));
 
+	// 创建锁（如果还没创建过）
+	if (s_pm_cpu_lock == NULL) {
+		esp_pm_lock_create(ESP_PM_CPU_FREQ_MAX, 0, "ble_high_perf", &s_pm_cpu_lock);
+	}
+
 	// Initialize NVS
 	ret = nvs_flash_init();
 	if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -90,7 +95,7 @@ void app_main(void)
 	ESP_LOGI(TAG, "test finish");
 
 	while (1) {
-		esp_pm_dump_locks(stdout);
+		//esp_pm_dump_locks(stdout);
 		vTaskDelay(pdMS_TO_TICKS(5000));
 	}
 

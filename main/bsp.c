@@ -53,6 +53,9 @@ extern int show_qr;
 
 extern YEPD *gyepd; // global epd pointer, defined in bsp.c
 
+esp_pm_lock_handle_t s_pm_cpu_lock;
+
+
 void bsp_gpio_initial(void);
 
 void process_config(const char *file_path);

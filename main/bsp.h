@@ -15,7 +15,7 @@
 #include "esp_err.h"
 #include "yepd.h"
 #include "stdbool.h"
-
+#include "esp_pm.h"
 
 #define PIN_3V3_EN 12
 #define GPIO_IO_NUM_1 4 // 修改为实际使用的引脚号
@@ -31,6 +31,8 @@ typedef void (*callback_t)(void); // 回调函数类型定义
 #define EXAMPLE_MAX_CHAR_SIZE 64
 
 extern YEPD *gyepd;
+
+extern esp_pm_lock_handle_t s_pm_cpu_lock;
 
 void bsp_gpio_initial(void);
 void bsp_peripheral_power(bool on);
