@@ -76,9 +76,10 @@ typedef enum {
 	CMD_CURRENT_PACKET_INDEX = 0x04, //current packet index and data
 	CMD_END_WRITE_DATA = 0x05, //end of write data
 	CMD_BATTERY_LEVEL = 0x06, //battery level, 2byte 10mV per bit, 65535*10mV=655.35V Max
-	CMD_QRCODE_ONIMAGE = 0x07, //show qrcode on image, 1byte, 0:off, 1:on
-	CMD_SHOW_LAST = 0x08, //show last saved data file at startup, 1byte, 0:off, 1:on
-	CMD_SHOW_SDCARD = 0x09, //show sdcard image at startup, 1byte, 0:off, 1:on
+	CMD_SET_WIFI = 0x07, //set wifi ssid and password, 0x07, ssid_len, ssid, pwd_len, pwd
+	CMD_QRCODE_ONIMAGE = 0x08, //show qrcode on image, 1byte, 0:off, 1:on
+	CMD_SHOW_LAST = 0x09, //show last saved data file at startup, 1byte, 0:off, 1:on
+	CMD_SHOW_SDCARD = 0x0A, //show sdcard image at startup, 1byte, 0:off, 1:on
 } EPD_CMD;
 
 typedef enum {
@@ -166,8 +167,8 @@ static esp_ble_adv_data_t scan_rsp_data = {
 
 // 广播参数
 static esp_ble_adv_params_t adv_params = {
-	.adv_int_min = 0x320,
-	.adv_int_max = 0x320,
+	.adv_int_min = 0x640,
+	.adv_int_max = 0x640,
 	.adv_type = ADV_TYPE_IND,
 	.own_addr_type = BLE_ADDR_TYPE_PUBLIC,
 	.channel_map = ADV_CHNL_ALL,
@@ -408,6 +409,8 @@ void example_exec_write_event_env(prepare_type_env_t *prepare_write_env, esp_ble
 static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_if,
 					esp_ble_gatts_cb_param_t *param)
 {
+	static uint32_t packet_index = 0;
+
 	switch (event) {
 	case ESP_GATTS_REG_EVT: {
 		esp_err_t set_dev_name_ret = esp_ble_gap_set_device_name(SAMPLE_DEVICE_NAME);
@@ -501,8 +504,8 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
 		uint8_t *data = param->write.value;
 		uint16_t len = param->write.len;
 		// the data length of gattc write  must be less than GATTS_DEMO_CHAR_VAL_LEN_MAX.
-		ESP_LOGI(TAG, "GATT_WRITE_EVT, handle = %d, value len = %d, value :", param->write.handle,
-			 param->write.len);
+		//ESP_LOGI(TAG, "GATT_WRITE_EVT, handle = %d, value len = %d, value :", param->write.handle,
+		//	 param->write.len);
 		//ESP_LOG_BUFFER_HEX(TAG, param->write.value, param->write.len);
 
 		if (len < 1)
@@ -516,6 +519,7 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
 
 		if ((param->write.handle == gatt_handle_table[IDX_CHAR_VAL_E])) {
 			epd_cmd = param->write.value[0];
+			//ESP_LOGI(TAG, "epd_cmd = %d", epd_cmd);
 			switch (epd_cmd) {
 			case CMD_RESET_EPD:
 				ESP_LOGI(TAG, "CMD_RESET_EPD");
@@ -574,11 +578,15 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
 			case CMD_REPORT_EPD_INFO:
 				ESP_LOGI(TAG, "CMD_REPORT_EPD_INFO");
 				break;
-			case CMD_START_WRITE_DATA:
+			case CMD_START_WRITE_DATA: {
 				ESP_LOGI(TAG, "CMD_START_WRITE_DATA");
+				packet_index = 0;
 
 				// 格式: 0x03 + 4字节总大小 (大端)
 				if (len >= 5) {
+					esp_pm_lock_acquire(s_pm_cpu_lock);
+					vTaskDelay(pdMS_TO_TICKS(50));
+
 					expected_total_size = (data[1] << 24) | (data[2] << 16) | (data[3] << 8) |
 							      data[4];
 					received_bytes = 0;
@@ -586,9 +594,11 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
 					// 如果之前有没释放的内存，先释放
 					if (ble_rx_buffer) {
 						free(ble_rx_buffer);
+						ble_rx_buffer = NULL;
 					}
 
-					ble_rx_buffer = (uint8_t *)malloc(expected_total_size);
+					ble_rx_buffer = (uint8_t *)heap_caps_malloc(
+						expected_total_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
 					if (ble_rx_buffer == NULL) {
 						ESP_LOGE(TAG, "内存分配失败，大小: %ld", expected_total_size);
 					} else {
@@ -596,9 +606,13 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
 							 expected_total_size);
 					}
 				}
-				break;
+			} break;
 			case CMD_CURRENT_PACKET_INDEX: {
-				ESP_LOGI(TAG, "CMD_CURRENT_PACKET_INDEX");
+				packet_index++;
+				//ESP_LOGI(TAG, "CMD_CURRENT_PACKET_INDEX");
+				if (packet_index % 50 == 0) {
+					ESP_LOGI(TAG, "接收进度: %d", packet_index);
+				}
 
 				// 格式: 0x04 + 4字节包编号 + 490字节数据
 				if (ble_rx_buffer && len > 5) {
@@ -629,6 +643,8 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
 					// 创建任务来处理显示
 					xTaskCreate(display_task, "display_task", 8192, NULL, 5, NULL);
 				}
+
+				esp_pm_lock_release(s_pm_cpu_lock);
 			} break;
 			default:
 				ESP_LOGW(TAG, "unknown epd cmd %d", epd_cmd);
@@ -695,28 +711,19 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
 		ESP_LOGI(TAG, "ESP_GATTS_CONNECT_EVT, conn_id = %d", param->connect.conn_id);
 		ESP_LOG_BUFFER_HEX(TAG, param->connect.remote_bda, 6);
 
-		// 加上锁：此时 CPU 会一直运行在最高频率，不会进入 Light Sleep
-		esp_pm_lock_acquire(s_pm_cpu_lock);
-		ESP_LOGI(TAG, "PM Lock Acquired: Staying awake for service discovery...");
-
 		esp_ble_conn_update_params_t conn_params = { 0 };
 		memcpy(conn_params.bda, param->connect.remote_bda, sizeof(esp_bd_addr_t));
 		/* For the iOS system, please refer to Apple official documents about the BLE connection parameters restrictions. */
 		conn_params.latency = 0;
 		conn_params.max_int = 0x20; // max_int = 0x20*1.25ms = 40ms
 		conn_params.min_int = 0x10; // min_int = 0x10*1.25ms = 20ms
-		conn_params.timeout = 1000; // timeout = 400*10ms = 4000ms
+		conn_params.timeout = 400; // timeout = 400*10ms = 4000ms
 		//start sent the update connection parameters to the peer device.
 		esp_ble_gap_update_conn_params(&conn_params);
 	} break;
 	case ESP_GATTS_DISCONNECT_EVT: {
 		ESP_LOGI(TAG, "ESP_GATTS_DISCONNECT_EVT, reason = 0x%x", param->disconnect.reason);
 		esp_ble_gap_start_advertising(&adv_params);
-
-		if (s_pm_cpu_lock) {
-			esp_pm_lock_release(s_pm_cpu_lock);
-			ESP_LOGI(TAG, "PM Lock Released: Resuming power management.");
-		}
 	} break;
 	case ESP_GATTS_CREAT_ATTR_TAB_EVT: {
 		if (param->add_attr_tab.status != ESP_GATT_OK) {
@@ -863,7 +870,8 @@ static void display_task(void *pvParameter)
 {
 	epd->display_index(ble_rx_buffer, received_bytes);
 
-	//free(ble_rx_buffer);
+	free(ble_rx_buffer);
+	ble_rx_buffer = NULL;
 	received_bytes = 0;
 	expected_total_size = 0;
 
