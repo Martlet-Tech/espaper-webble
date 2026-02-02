@@ -82,19 +82,16 @@
 static const char TAG[] = "YMS16001200-1330AAX-E6.c";
 
 static void setPinCsAll(unsigned int setLevel);
-static void setPinCs(unsigned char csNumber, unsigned int setLevel);
+//static void setPinCs(unsigned char csNumber, unsigned int setLevel) __attribute__((unused));
 
-void EL133UF1_DisplayFrame(const unsigned char *frame_buffer_m,
-			   const unsigned char *frame_buffer_s);
-void EL133UF1_DisplayColor(unsigned char color, unsigned char *frame_buffer_m,
-			   unsigned char *frame_buffer_s);
+void EL133UF1_DisplayFrame(const unsigned char *frame_buffer_m, const unsigned char *frame_buffer_s);
+void EL133UF1_DisplayColor(unsigned char color, unsigned char *frame_buffer_m, unsigned char *frame_buffer_s);
 void EL133UF1_Sleep(void);
 int EL133UF1_Deinit(void);
 
 static const unsigned char spiCsPin[2] = { PIN_CS_M, PIN_CS_S };
 
-static const unsigned char AN_TM_V[9] = { 0xC0, 0x1C, 0x1C, 0xCC, 0xCC,
-					  0xCC, 0x15, 0x15, 0x55 };
+static const unsigned char AN_TM_V[9] = { 0xC0, 0x1C, 0x1C, 0xCC, 0xCC, 0xCC, 0x15, 0x15, 0x55 };
 static const unsigned char CMD66_V[6] = { 0x49, 0x55, 0x13, 0x5D, 0x05, 0x10 };
 static const unsigned char PSR_V[2] = { 0xDF, 0x69 };
 static const unsigned char CDI_V[1] = { 0xF7 };
@@ -153,8 +150,7 @@ void setPinCsAll(unsigned int setLevel)
 }
 
 //====================================================================
-void epd_wcmd_2ch(const unsigned char cmd, const unsigned char *data,
-		  unsigned int data_length, unsigned int cs_mask)
+void epd_wcmd_2ch(const unsigned char cmd, const unsigned char *data, unsigned int data_length, unsigned int cs_mask)
 {
 	if (cs_mask == CS_MASK_ALL) {
 		epd_set_io(PIN_CS_M, 0);
@@ -220,8 +216,7 @@ static void io_initial(void)
 	gpio_config_t gpiocfg_out_lcd = {};
 	gpiocfg_out_lcd.intr_type = GPIO_INTR_DISABLE;
 	gpiocfg_out_lcd.mode = GPIO_MODE_OUTPUT;
-	gpiocfg_out_lcd.pin_bit_mask = (1ULL << EPD_RST) | (1ULL << PIN_CS_M) |
-				       (1ULL << PIN_CS_S);
+	gpiocfg_out_lcd.pin_bit_mask = (1ULL << EPD_RST) | (1ULL << PIN_CS_M) | (1ULL << PIN_CS_S);
 	gpiocfg_out_lcd.pull_down_en = GPIO_PULLDOWN_DISABLE;
 	gpiocfg_out_lcd.pull_up_en = GPIO_PULLUP_DISABLE;
 	gpio_config(&gpiocfg_out_lcd);
@@ -273,20 +268,16 @@ int EL133UF1_Init(void)
 	epd_wcmd_2ch(PWR, PWR_V, sizeof(PWR_V), CS_MASK_MASTER);
 	epd_wcmd_2ch(EN_BUF, EN_BUF_V, sizeof(EN_BUF_V), CS_MASK_MASTER);
 	epd_wcmd_2ch(BTST_P, BTST_P_V, sizeof(BTST_P_V), CS_MASK_MASTER);
-	epd_wcmd_2ch(BOOST_VDDP_EN, BOOST_VDDP_EN_V, sizeof(BOOST_VDDP_EN_V),
-		     CS_MASK_MASTER);
+	epd_wcmd_2ch(BOOST_VDDP_EN, BOOST_VDDP_EN_V, sizeof(BOOST_VDDP_EN_V), CS_MASK_MASTER);
 	epd_wcmd_2ch(BTST_N, BTST_N_V, sizeof(BTST_N_V), CS_MASK_MASTER);
-	epd_wcmd_2ch(BUCK_BOOST_VDDN, BUCK_BOOST_VDDN_V,
-		     sizeof(BUCK_BOOST_VDDN_V), CS_MASK_MASTER);
-	epd_wcmd_2ch(TFT_VCOM_POWER, TFT_VCOM_POWER_V, sizeof(TFT_VCOM_POWER_V),
-		     CS_MASK_MASTER);
+	epd_wcmd_2ch(BUCK_BOOST_VDDN, BUCK_BOOST_VDDN_V, sizeof(BUCK_BOOST_VDDN_V), CS_MASK_MASTER);
+	epd_wcmd_2ch(TFT_VCOM_POWER, TFT_VCOM_POWER_V, sizeof(TFT_VCOM_POWER_V), CS_MASK_MASTER);
 
 	ESP_LOGI(TAG, "EPD initial command send done\r\n");
 	return 0;
 }
 
-void EL133UF1_DisplayFrame(const unsigned char *frame_buffer_m,
-			   const unsigned char *frame_buffer_s)
+void EL133UF1_DisplayFrame(const unsigned char *frame_buffer_m, const unsigned char *frame_buffer_s)
 {
 	// epd_io.EPD_IO_WriteCommandData_2CH(SPIM, SPIM_V, sizeof(SPIM_V), CS_MASK_ALL);
 	// ATTENTION: 原本是在一个CS下拉周期里完成命令和数据的发送。此处待测试
@@ -328,8 +319,7 @@ int EL133UF1_Deinit(void)
 	gpio_config_t gpiocfg_reset = {};
 	gpiocfg_reset.intr_type = GPIO_INTR_DISABLE;
 	gpiocfg_reset.mode = GPIO_MODE_INPUT;
-	gpiocfg_reset.pin_bit_mask = (1ULL << EPD_RST) | (1ULL << PIN_CS_M) |
-				     (1ULL << PIN_CS_S) | (1ULL << EPD_BUSY);
+	gpiocfg_reset.pin_bit_mask = (1ULL << EPD_RST) | (1ULL << PIN_CS_M) | (1ULL << PIN_CS_S) | (1ULL << EPD_BUSY);
 	gpiocfg_reset.pull_down_en = GPIO_PULLDOWN_DISABLE;
 	gpiocfg_reset.pull_up_en = GPIO_PULLUP_DISABLE;
 	gpio_config(&gpiocfg_reset);
@@ -365,8 +355,7 @@ int EL133UF1_Update(void)
 	return 0;
 }
 
-void EL133UF1_DisplayColor(unsigned char color, unsigned char *frame_buffer_m,
-			   unsigned char *frame_buffer_s)
+void EL133UF1_DisplayColor(unsigned char color, unsigned char *frame_buffer_m, unsigned char *frame_buffer_s)
 {
 	color = color + (color << 4);
 	ESP_LOGI(TAG, "EL133UF1_DisplayColor Prepare.");
@@ -388,17 +377,14 @@ int EL133UF1_new_fill_index(uint8_t *inbuff)
 {
 	index_buffer = inbuff;
 
-	dst_image_buffer_m =
-		heap_caps_malloc(DST_FRAME_SIZE, MALLOC_CAP_SPIRAM);
-	dst_image_buffer_s =
-		heap_caps_malloc(DST_FRAME_SIZE, MALLOC_CAP_SPIRAM);
+	dst_image_buffer_m = heap_caps_malloc(DST_FRAME_SIZE, MALLOC_CAP_SPIRAM);
+	dst_image_buffer_s = heap_caps_malloc(DST_FRAME_SIZE, MALLOC_CAP_SPIRAM);
 	if (dst_image_buffer_m == NULL || dst_image_buffer_s == NULL) {
 		ESP_LOGE(TAG, "dst_image_buffer malloc fail");
 		return ESP_FAIL;
 	}
 
-	palette_index_to_E6_data(index_buffer, dst_image_buffer_m,
-				 dst_image_buffer_s, 1200, 1600);
+	palette_index_to_E6_data(index_buffer, dst_image_buffer_m, dst_image_buffer_s, 1200, 1600);
 
 	ESP_LOGI(TAG, "取模完成");
 

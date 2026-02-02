@@ -13,6 +13,7 @@ idf_component_register(
 			"pmic/IST9201.c"
 			"arduino_wrapper.c"
 			"ble/gatts_table.c"
+			"wifi/wifi_sta.c"
 
         INCLUDE_DIRS 	"."
 			"lcd"
@@ -23,6 +24,7 @@ idf_component_register(
 			"QRLib"
 			"pmic"
 			"ble"
+			"wifi"
 	# EMBED_FILES 	"web/favicon.ico" "web/upload_script.html"
 	PRIV_REQUIRES bt nvs_flash
 	REQUIRES driver spi_flash fatfs sdmmc spiffs vfs esp_http_server

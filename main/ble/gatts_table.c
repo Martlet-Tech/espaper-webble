@@ -32,6 +32,7 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "esp_bt.h"
+#include "esp_wifi.h"
 
 #include "esp_gap_ble_api.h"
 #include "esp_gatts_api.h"
@@ -42,6 +43,7 @@
 #include <yepd.h>
 #include <cJSON.h>
 #include "bsp.h"
+#include "wifi_sta.h"
 
 #define TAG "TAG_GATTS_TABLE"
 
@@ -659,6 +661,54 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
 				// 创建任务来处理清除
 				xTaskCreate(display_clear_task, "clear_scr", 4096, (void *)(uintptr_t)color_index, 5,
 					    NULL);
+			} break;
+			case CMD_SET_WIFI: {
+				ESP_LOGI(TAG, "CMD_SET_WIFI");
+
+				// 新协议格式: [0]CMD, [1]SSID_LEN, [2]PWD_LEN, [3...]SSID, [... ]PWD
+				if (len < 3) {
+					ESP_LOGE(TAG, "WiFi Data too short (min 3 bytes)");
+					break;
+				}
+
+				uint8_t ssid_len = data[1];
+				uint8_t pwd_len = data[2];
+
+				// 安全检查：防止数据包长度不足导致的越界
+				if (len < (3 + ssid_len + pwd_len)) {
+					ESP_LOGE(TAG, "Invalid packet length: expected %d, got %d",
+						 (3 + ssid_len + pwd_len), len);
+					break;
+				}
+
+				// 解析 SSID
+				char ssid[33] = { 0 };
+				uint8_t actual_ssid_copy = (ssid_len > 32) ? 32 : ssid_len;
+				memcpy(ssid, &data[3], actual_ssid_copy); // 注意：从索引 3 开始
+
+				// 解析 Password
+				char pwd[65] = { 0 };
+				uint8_t actual_pwd_copy = (pwd_len > 64) ? 64 : pwd_len;
+				memcpy(pwd, &data[3 + ssid_len], actual_pwd_copy); // 起始位 = 3 + ssid实际长度
+
+				ESP_LOGI(TAG, "Received WiFi Config: SSID=[%s], PWD=[%s]", ssid, pwd);
+
+				// 1. 保存到 NVS
+				nvs_handle_t my_handle;
+				esp_err_t err = nvs_open("storage", NVS_READWRITE, &my_handle);
+				if (err == ESP_OK) {
+					nvs_set_str(my_handle, "wifi_ssid", ssid);
+					nvs_set_str(my_handle, "wifi_password", pwd);
+					nvs_commit(my_handle);
+					nvs_close(my_handle);
+					ESP_LOGI(TAG, "WiFi config saved to NVS");
+				} else {
+					ESP_LOGE(TAG, "Error opening NVS: %s", esp_err_to_name(err));
+				}
+
+				// 2. 这里可以触发 WiFi 连接逻辑
+				wifi_init_sta(ssid, pwd);
+
 			} break;
 			default:
 				ESP_LOGW(TAG, "unknown epd cmd %d", epd_cmd);

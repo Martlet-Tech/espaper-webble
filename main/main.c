@@ -85,14 +85,48 @@ void app_main(void)
 
 	gatts_main();
 
-	ESP_LOGI(TAG, "yepd initial");
+	/*ESP_LOGI(TAG, "yepd initial");
 	gyepd = yepd_find_by_name("YMS9841304-1248CIH-E5");
 	if (gyepd == NULL) {
 		ESP_LOGE(TAG, "yepd not found");
-		return;
+	}*/
+
+	ESP_LOGI(TAG, "yepd initial from NVS");
+
+	nvs_handle_t my_handle;
+	char saved_epd_name[64] = { 0 }; // 假设名称不会超过64字节
+	size_t required_size = sizeof(saved_epd_name);
+
+	// 默认型号（防止 NVS 为空）
+	const char *default_epd_name = "YMS9841304-1248CIH-E5";
+
+	esp_err_t err = nvs_open("storage", NVS_READONLY, &my_handle);
+	if (err == ESP_OK) {
+		// 注意：你在 CMD_SET_EPD_NAME 中使用的是 nvs_set_blob
+		// 所以这里对应使用 nvs_get_blob
+		err = nvs_get_blob(my_handle, "config_data", saved_epd_name, &required_size);
+		if (err == ESP_OK) {
+			ESP_LOGI(TAG, "NVS found EPD name: %s", saved_epd_name);
+			gyepd = yepd_find_by_name(saved_epd_name);
+		} else {
+			ESP_LOGI(TAG, "NVS key 'config_data' not found, using default");
+			gyepd = yepd_find_by_name(default_epd_name);
+		}
+		nvs_close(my_handle);
+	} else {
+		ESP_LOGE(TAG, "NVS open failed: %s, using default", esp_err_to_name(err));
+		gyepd = yepd_find_by_name(default_epd_name);
 	}
-	gyepd->test();
-	ESP_LOGI(TAG, "test finish");
+
+	if (gyepd == NULL) {
+		ESP_LOGE(TAG, "yepd [%s] not supported or not found",
+			 strlen(saved_epd_name) > 0 ? saved_epd_name : default_epd_name);
+	} else {
+		ESP_LOGI(TAG, "Current EPD initialized: %s", gyepd->name);
+	}
+
+	//gyepd->test();
+	//ESP_LOGI(TAG, "test finish");
 
 	while (1) {
 		//esp_pm_dump_locks(stdout);
