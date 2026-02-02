@@ -614,6 +614,44 @@ static void EPD_init(void)
 
 //========================================================================================
 
+static void update(void)
+{
+	ESP_LOGI(TAG, "触发刷屏");
+
+	EPD_W21_WriteCMD_ALL(0x04);
+	ESP_LOGI(TAG, "cmd 04 发送完成");
+	EPD_lcd_chkstatus();
+	EPD_lcd_chkstatus1();
+	delay_ms(300);
+
+	EPD_W21_WriteCMD_ALL(0x12);
+	EPD_W21_WriteDATA_ALL(1);
+	ESP_LOGI(TAG, "cmd 12 发送完成");
+	EPD_lcd_chkstatus();
+	EPD_lcd_chkstatus1();
+
+	EPD_W21_WriteCMD_ALL(0x02);
+	EPD_W21_WriteDATA_ALL(0x00);
+	ESP_LOGI(TAG, "cmd 02 发送完成");
+	EPD_lcd_chkstatus();
+	EPD_lcd_chkstatus1();
+
+	EPD_W21_WriteCMD_ALL(0x07);
+	EPD_W21_WriteDATA_ALL(0xA5);
+	ESP_LOGI(TAG, "cmd 07 发送完成");
+
+	LED0_OFF();
+
+	gpio_deinitial();
+
+	gpio_set_level(PIN_PWR, 0);
+	ESP_LOGI(TAG, "电源关闭");
+
+	ESP_LOGI(TAG, "刷屏结束");
+
+	return;
+}
+
 static inline uint8_t reflect_byte_2bpp(uint8_t b)
 {
 	return ((b & 0x03) << 6) | ((b & 0x0C) << 2) | ((b & 0x30) >> 2) | ((b & 0xC0) >> 6);
@@ -668,34 +706,7 @@ static int display_index_buff(uint8_t *datas, size_t size)
 	}
 
 	ESP_LOGI(TAG, "数据填充完毕");
-
-	// --- 刷屏触发指令 ---
-	EPD_W21_WriteCMD_ALL(0x04);
-	ESP_LOGI(TAG, "cmd 04 发送完成");
-	EPD_lcd_chkstatus();
-	EPD_lcd_chkstatus1();
-	delay_ms(300);
-
-	EPD_W21_WriteCMD_ALL(0x12);
-	EPD_W21_WriteDATA_ALL(1);
-	ESP_LOGI(TAG, "cmd 12 发送完成");
-	EPD_lcd_chkstatus();
-	EPD_lcd_chkstatus1();
-
-	EPD_W21_WriteCMD_ALL(0x02);
-	EPD_W21_WriteDATA_ALL(0x00);
-	ESP_LOGI(TAG, "cmd 02 发送完成");
-	EPD_lcd_chkstatus();
-	EPD_lcd_chkstatus1();
-
-	EPD_W21_WriteCMD_ALL(0x07);
-	EPD_W21_WriteDATA_ALL(0xA5);
-	ESP_LOGI(TAG, "cmd 07 发送完成");
-
-	gpio_deinitial();
-
-	gpio_set_level(PIN_PWR, 0);
-	ESP_LOGI(TAG, "电源关闭");
+	update();
 	return 0;
 }
 
@@ -726,88 +737,26 @@ static void display_clear(uint8_t index)
 	}
 }
 
-static void display_test(uint8_t index)
+static int clear_index_buff(uint32_t index)
 {
+	ESP_LOGI(TAG, "clear_index_buff index %02x", index);
+
+	gpio_initial();
+
 	LED0_ON();
 	EPD_init(); //EPD init
 	//display_White();
 	display_clear(index);
+	update();
 
-	EPD_W21_WriteCMD_M1M2(0x04);
-	EPD_lcd_chkstatus();
-	EPD_lcd_chkstatus1();
-	delay_ms(300);
-
-	EPD_W21_WriteCMD_ALL(0x12); //DISPLAY REFRESH
-	EPD_W21_WriteDATA_ALL(1); //Y
-	EPD_lcd_chkstatus();
-	EPD_lcd_chkstatus1();
-
-	EPD_W21_WriteCMD_ALL(0x02);
-	EPD_W21_WriteDATA_ALL(0x00);
-	EPD_lcd_chkstatus();
-	EPD_lcd_chkstatus1();
-
-	EPD_W21_WriteCMD_ALL(0x07);
-	EPD_W21_WriteDATA_ALL(0xA5);
-
-	LED0_OFF();
-}
-
-int YMS9841304_new_init(void)
-{
-	gpio_initial();
-
-	ESP_LOGI(TAG, "YMS9841304 initial finish");
-	return 0;
-}
-
-void YMS9841304_new_deinit(void)
-{
-	//TODO
-	//gpio_deinitial();
-
-	gpio_set_level(PIN_PWR, 0);
-}
-
-int YMS9841304_new_update(void)
-{
-	return 0;
-}
-
-static int clear_index_buff(uint32_t index)
-{
-	YMS9841304_new_init();
-	ESP_LOGI(TAG, "clear_index_buff index %02x", index);
-
-	display_test(index); //测试白色
-	vTaskDelay(pdMS_TO_TICKS(1000));
-
-	gpio_deinitial();
-	gpio_set_level(PIN_PWR, 0);
-	ESP_LOGI(TAG, "电源关闭");
+	ESP_LOGI(TAG, "clear_index_buff finish");
 
 	return 0;
 }
 
 static void test_task(void *pvParameter)
 {
-	YMS9841304_new_init();
-
-	display_test(0x01);
-	vTaskDelay(pdMS_TO_TICKS(1000));
-	/*display_test_BLACK();
-		vTaskDelay(pdMS_TO_TICKS(1000));
-		display_test_Yellow();
-		vTaskDelay(pdMS_TO_TICKS(1000));
-		display_test_Red();
-		vTaskDelay(pdMS_TO_TICKS(1000));*/
-	//}
-	gpio_deinitial();
-
-	gpio_set_level(PIN_PWR, 0);
-	ESP_LOGI(TAG, "电源关闭");
-
+	clear_index_buff(0x01);
 	vTaskDelete(NULL);
 }
 
@@ -835,11 +784,7 @@ YEPD YMS9841304_1248CIH_E5 = {
 	// black=00 white=01 red=11 yellow=10
 	.palette = "0,0,0;255,255,255;255,255,0;255,0,0",
 	.bpp = 4,
-	.init = YMS9841304_new_init,
 	.clear = clear_index_buff,
-	.update = YMS9841304_new_update,
-	.test = test_YMS9841304_1248CIH_E5,
 	.display_index = display_index_buff,
-	.deinit = YMS9841304_new_deinit,
-	.interface = YEPD_IF_SPI8S,
+	.test = test_YMS9841304_1248CIH_E5,
 };
