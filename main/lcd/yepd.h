@@ -16,6 +16,7 @@
 
 typedef int (*YEPD_Fill_FB)(uint8_t *buff);
 typedef int (*YEPD_Display_Index_Buff)(uint8_t *buff, size_t size);
+typedef int (*YEPD_Clear)(uint32_t index);
 typedef int (*YEPD_Initial)(void);
 typedef int (*YEPD_Update)(void);
 
@@ -50,12 +51,13 @@ typedef struct {
 	uint16_t height;
 	const char *palette;
 	uint8_t bpp; // in data buffer, how many bits in a pixel
+
 	YEPD_Initial init; // initail gpio, bus, and epd module
 	YEPD_Fill_FB fill_index; // fill index buffer
 	YEPD_Update update; // update deinitial and sleep
 	YEPD_Display_Index_Buff display_index; // display index buffer
+	YEPD_Clear clear;
 	void (*deinit)(void);
-
 	void (*test)(void);
 
 	YEPD_IF interface;

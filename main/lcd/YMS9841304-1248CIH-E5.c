@@ -612,6 +612,8 @@ static void EPD_init(void)
 	EPD_W21_WriteDATA_ALL(0XE3);
 }
 
+//========================================================================================
+
 static inline uint8_t reflect_byte_2bpp(uint8_t b)
 {
 	return ((b & 0x03) << 6) | ((b & 0x0C) << 2) | ((b & 0x30) >> 2) | ((b & 0xC0) >> 6);
@@ -697,114 +699,39 @@ static int display_index_buff(uint8_t *datas, size_t size)
 	return 0;
 }
 
-void display_White(void)
+static void display_clear(uint8_t index)
 {
 	unsigned long i;
 
+	uint8_t byte_to_fill = index | (index << 2) | (index << 4) | (index << 6);
+
 	EPD_W21_WriteCMD_M1(0x10);
 	for (i = 0; i < _imageSize_M1; i++) {
-		EPD_W21_WriteDATA_M1(0x55);
+		EPD_W21_WriteDATA_M1(byte_to_fill);
 	}
 
 	EPD_W21_WriteCMD_S1(0x10);
 	for (i = 0; i < _imageSize_S1; i++) {
-		EPD_W21_WriteDATA_S1(0x55);
+		EPD_W21_WriteDATA_S1(byte_to_fill);
 	}
 
 	EPD_W21_WriteCMD_M2(0x10);
 	for (i = 0; i < _imageSize_M2; i++) {
-		EPD_W21_WriteDATA_M2(0x55);
+		EPD_W21_WriteDATA_M2(byte_to_fill);
 	}
 
 	EPD_W21_WriteCMD_S2(0x10);
 	for (i = 0; i < _imageSize_S2; i++) {
-		EPD_W21_WriteDATA_S2(0x55);
+		EPD_W21_WriteDATA_S2(byte_to_fill);
 	}
 }
 
-void display_BLACK(void)
+static void display_test(uint8_t index)
 {
-	unsigned long i;
-
-	EPD_W21_WriteCMD_M1(0x10);
-	for (i = 0; i < _imageSize_M1; i++) {
-		EPD_W21_WriteDATA_M1(0x00);
-	}
-
-	EPD_W21_WriteCMD_S1(0x10);
-	for (i = 0; i < _imageSize_S1; i++) {
-		EPD_W21_WriteDATA_S1(0x00);
-	}
-
-	EPD_W21_WriteCMD_M2(0x10);
-	for (i = 0; i < _imageSize_M2; i++) {
-		EPD_W21_WriteDATA_M2(0x00);
-	}
-
-	EPD_W21_WriteCMD_S2(0x10);
-	for (i = 0; i < _imageSize_S2; i++) {
-		EPD_W21_WriteDATA_S2(0x00);
-	}
-}
-
-void display_Red(void)
-{
-	unsigned long i;
-
-	EPD_W21_WriteCMD_M1(0x10);
-	for (i = 0; i < _imageSize_M1; i++) {
-		EPD_W21_WriteDATA_M1(0xff);
-	}
-
-	EPD_W21_WriteCMD_S1(0x10);
-	for (i = 0; i < _imageSize_S1; i++) {
-		EPD_W21_WriteDATA_S1(0xff);
-	}
-
-	EPD_W21_WriteCMD_M2(0x10);
-	for (i = 0; i < _imageSize_M2; i++) {
-		EPD_W21_WriteDATA_M2(0xff);
-	}
-
-	EPD_W21_WriteCMD_S2(0x10);
-	for (i = 0; i < _imageSize_S2; i++) {
-		EPD_W21_WriteDATA_S2(0xff);
-	}
-}
-
-void display_Yellow(void)
-{
-	unsigned long i;
-
-	EPD_W21_WriteCMD_M1(0x10);
-	for (i = 0; i < _imageSize_M1; i++) {
-		EPD_W21_WriteDATA_M1(0xaa);
-	}
-
-	EPD_W21_WriteCMD_S1(0x10);
-	for (i = 0; i < _imageSize_S1; i++) {
-		EPD_W21_WriteDATA_S1(0xaa);
-	}
-
-	EPD_W21_WriteCMD_M2(0x10);
-	for (i = 0; i < _imageSize_M2; i++) {
-		EPD_W21_WriteDATA_M2(0xaa);
-	}
-
-	EPD_W21_WriteCMD_S2(0x10);
-	for (i = 0; i < _imageSize_S2; i++) {
-		EPD_W21_WriteDATA_S2(0xaa);
-	}
-}
-
-static void display_test_WHITE(void) __attribute__((unused));
-static void display_test_WHITE(void)
-{
-	///////////////////////////////////////////////////////////////
-
 	LED0_ON();
 	EPD_init(); //EPD init
-	display_White();
+	//display_White();
+	display_clear(index);
 
 	EPD_W21_WriteCMD_M1M2(0x04);
 	EPD_lcd_chkstatus();
@@ -826,98 +753,6 @@ static void display_test_WHITE(void)
 
 	LED0_OFF();
 }
-
-static void display_test_Red(void) __attribute__((unused));
-static void display_test_Red(void)
-{
-	///////////////////////////////////////////////////////////////
-
-	LED0_ON();
-	EPD_init(); //EPD init
-	display_Red();
-
-	EPD_W21_WriteCMD_M1M2(0x04);
-	EPD_lcd_chkstatus();
-	EPD_lcd_chkstatus1();
-	delay_ms(300);
-
-	EPD_W21_WriteCMD_ALL(0x12); //DISPLAY REFRESH
-	EPD_W21_WriteDATA_ALL(1); //Y
-	EPD_lcd_chkstatus();
-	EPD_lcd_chkstatus1();
-
-	EPD_W21_WriteCMD_ALL(0x02);
-	EPD_W21_WriteDATA_ALL(0x00);
-	EPD_lcd_chkstatus();
-	EPD_lcd_chkstatus1();
-
-	EPD_W21_WriteCMD_ALL(0x07);
-	EPD_W21_WriteDATA_ALL(0xA5);
-
-	LED0_OFF();
-}
-
-static void display_test_Yellow(void) __attribute__((unused));
-static void display_test_Yellow(void)
-{
-	///////////////////////////////////////////////////////////////
-
-	LED0_ON();
-	EPD_init(); //EPD init
-	display_Yellow();
-
-	EPD_W21_WriteCMD_M1M2(0x04);
-	EPD_lcd_chkstatus();
-	EPD_lcd_chkstatus1();
-	delay_ms(300);
-
-	EPD_W21_WriteCMD_ALL(0x12); //DISPLAY REFRESH
-	EPD_W21_WriteDATA_ALL(1); //Y
-	EPD_lcd_chkstatus();
-	EPD_lcd_chkstatus1();
-
-	EPD_W21_WriteCMD_ALL(0x02);
-	EPD_W21_WriteDATA_ALL(0x00);
-	EPD_lcd_chkstatus();
-	EPD_lcd_chkstatus1();
-
-	EPD_W21_WriteCMD_ALL(0x07);
-	EPD_W21_WriteDATA_ALL(0xA5);
-
-	LED0_OFF();
-}
-
-static void display_test_BLACK(void) __attribute__((unused));
-static void display_test_BLACK(void)
-{
-	///////////////////////////////////////////////////////////////
-
-	LED0_ON();
-	EPD_init(); //EPD init
-	display_BLACK();
-
-	EPD_W21_WriteCMD_M1M2(0x04);
-	EPD_lcd_chkstatus();
-	EPD_lcd_chkstatus1();
-	delay_ms(300);
-
-	EPD_W21_WriteCMD_ALL(0x12); //DISPLAY REFRESH
-	EPD_W21_WriteDATA_ALL(1); //Y
-	EPD_lcd_chkstatus();
-	EPD_lcd_chkstatus1();
-
-	EPD_W21_WriteCMD_ALL(0x02);
-	EPD_W21_WriteDATA_ALL(0x00);
-	EPD_lcd_chkstatus();
-	EPD_lcd_chkstatus1();
-
-	EPD_W21_WriteCMD_ALL(0x07);
-	EPD_W21_WriteDATA_ALL(0xA5);
-
-	LED0_OFF();
-}
-
-//========================================================================================
 
 int YMS9841304_new_init(void)
 {
@@ -935,21 +770,31 @@ void YMS9841304_new_deinit(void)
 	gpio_set_level(PIN_PWR, 0);
 }
 
-int YMS9841304_new_fill_index(uint8_t *inbuff)
-{
-	return 0;
-}
-
 int YMS9841304_new_update(void)
 {
 	return 0;
 }
 
-static void my_task(void *pvParameter)
+static int clear_index_buff(uint32_t index)
+{
+	YMS9841304_new_init();
+	ESP_LOGI(TAG, "clear_index_buff index %02x", index);
+
+	display_test(index); //测试白色
+	vTaskDelay(pdMS_TO_TICKS(1000));
+
+	gpio_deinitial();
+	gpio_set_level(PIN_PWR, 0);
+	ESP_LOGI(TAG, "电源关闭");
+
+	return 0;
+}
+
+static void test_task(void *pvParameter)
 {
 	YMS9841304_new_init();
 
-	display_test_WHITE();
+	display_test(0x01);
 	vTaskDelay(pdMS_TO_TICKS(1000));
 	/*display_test_BLACK();
 		vTaskDelay(pdMS_TO_TICKS(1000));
@@ -963,13 +808,12 @@ static void my_task(void *pvParameter)
 	gpio_set_level(PIN_PWR, 0);
 	ESP_LOGI(TAG, "电源关闭");
 
-	// 结束任务
 	vTaskDelete(NULL);
 }
 
 void test_YMS9841304_1248CIH_E5(void)
 {
-	xTaskCreate(my_task, "my_task", 4096, NULL, 5, NULL);
+	xTaskCreate(test_task, "test_task", 4096, NULL, 5, NULL);
 
 	ESP_LOGI(TAG, "test_YMS9841304_1248CIH_E5 finish");
 }
@@ -992,33 +836,10 @@ YEPD YMS9841304_1248CIH_E5 = {
 	.palette = "0,0,0;255,255,255;255,255,0;255,0,0",
 	.bpp = 4,
 	.init = YMS9841304_new_init,
-	.fill_index = YMS9841304_new_fill_index,
+	.clear = clear_index_buff,
 	.update = YMS9841304_new_update,
 	.test = test_YMS9841304_1248CIH_E5,
 	.display_index = display_index_buff,
 	.deinit = YMS9841304_new_deinit,
 	.interface = YEPD_IF_SPI8S,
-	.pin_rst = 21,
-	.pin_busy = 14,
-	.pin_cs = { 13, 9, -1 },
-	.pin_sck = 12,
-	.pin_dc = -1,
-	.pin_d = { 11, -1 },
-	.sections = { { .x0 = 0,
-			.y0 = 0,
-			.x1 = 1200 / 2,
-			.y1 = 1600,
-			.cs_mask = 0x01,
-			.index_to_section = build_data_e6 },
-		      { .x0 = 1200 / 2,
-			.y0 = 0,
-			.x1 = 1200 / 2,
-			.y1 = 1600,
-			.cs_mask = 0x02,
-			.index_to_section = build_data_e6 },
-		      { .index_to_section = NULL } },
-	.cmd_init = "00 00 10 a0 ff ff\n"
-		    "01 02 05 12 34 56 78\n",
-	.cmd_disp = "00 00 10 a0 ff ff\n"
-		    "01 02 05 12 34 56 78\n",
 };

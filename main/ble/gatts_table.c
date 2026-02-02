@@ -75,11 +75,12 @@ typedef enum {
 	CMD_START_WRITE_DATA = 0x03, //start to write data, 4byte means data len
 	CMD_CURRENT_PACKET_INDEX = 0x04, //current packet index and data
 	CMD_END_WRITE_DATA = 0x05, //end of write data
-	CMD_BATTERY_LEVEL = 0x06, //battery level, 2byte 10mV per bit, 65535*10mV=655.35V Max
-	CMD_SET_WIFI = 0x07, //set wifi ssid and password, 0x07, ssid_len, ssid, pwd_len, pwd
-	CMD_QRCODE_ONIMAGE = 0x08, //show qrcode on image, 1byte, 0:off, 1:on
-	CMD_SHOW_LAST = 0x09, //show last saved data file at startup, 1byte, 0:off, 1:on
-	CMD_SHOW_SDCARD = 0x0A, //show sdcard image at startup, 1byte, 0:off, 1:on
+	CMD_EPD_CLEAR = 0x06, //clear epd screen
+	CMD_BATTERY_LEVEL = 0x07, //battery level, 2byte 10mV per bit, 65535*10mV=655.35V Max
+	CMD_SET_WIFI = 0x08, //set wifi ssid and password, 0x08, ssid_len, ssid, pwd_len, pwd
+	CMD_QRCODE_ONIMAGE = 0x09, //show qrcode on image, 1byte, 0:off, 1:on
+	CMD_SHOW_LAST = 0x0A, //show last saved data file at startup, 1byte, 0:off, 1:on
+	CMD_SHOW_SDCARD = 0x0B, //show sdcard image at startup, 1byte, 0:off, 1:on
 } EPD_CMD;
 
 typedef enum {
@@ -290,6 +291,7 @@ static const esp_gatts_attr_db_t gatt_db[HRS_IDX_NB] = {
 };
 
 static void display_task(void *pvParameter);
+static void display_clear_task(void *pvParameter);
 
 static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
 {
@@ -646,6 +648,18 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
 
 				esp_pm_lock_release(s_pm_cpu_lock);
 			} break;
+			case CMD_EPD_CLEAR: {
+				ESP_LOGI(TAG, "CMD_EPD_CLEAR");
+				if (len > 1) {
+					ESP_LOGI(TAG, "clear with index %02x", data[1]);
+				}
+
+				uint8_t color_index = data[1];
+
+				// 创建任务来处理清除
+				xTaskCreate(display_clear_task, "clear_scr", 4096, (void *)(uintptr_t)color_index, 5,
+					    NULL);
+			} break;
 			default:
 				ESP_LOGW(TAG, "unknown epd cmd %d", epd_cmd);
 				break;
@@ -876,5 +890,19 @@ static void display_task(void *pvParameter)
 	expected_total_size = 0;
 
 	// 结束任务
+	vTaskDelete(NULL);
+}
+
+static void display_clear_task(void *pvParameter)
+{
+	uint8_t color_index = (uint8_t)(uintptr_t)pvParameter;
+	ESP_LOGI(TAG, "clear with color index %02x", color_index);
+
+	if (epd && epd->clear) {
+		epd->clear(color_index);
+	} else {
+		ESP_LOGE(TAG, "epd->clear is NULL");
+	}
+
 	vTaskDelete(NULL);
 }
