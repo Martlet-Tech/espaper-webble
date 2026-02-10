@@ -63,6 +63,8 @@ const char *SAMPLE_DEVICE_NAME = "YESEPD_GATTS_DEMO";
 #define ADV_CONFIG_FLAG (1 << 0)
 #define SCAN_RSP_CONFIG_FLAG (1 << 1)
 
+extern char wifi_ip_address[16];
+
 YEPD *epd = NULL;
 
 #define DATA_CHUNK_SIZE 490 // 对应前端的 CHUNK_SIZE
@@ -460,51 +462,73 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
 			 param->read.conn_id, param->read.trans_id, param->read.handle);
 
 		if (param->read.handle == gatt_handle_table[IDX_CHAR_VAL_D]) {
+			ESP_LOGI(TAG, "READ epd_cmd = %d", epd_cmd);
 			esp_gatt_rsp_t rsp;
 			memset(&rsp, 0, sizeof(esp_gatt_rsp_t));
-			ESP_LOGI(TAG, "Read request for FF04, generating dynamic data...");
 
-			// 从 NVS 读回数据
-			nvs_handle_t handle;
-			nvs_open("storage", NVS_READONLY, &handle);
-			size_t required_len = 0;
-			nvs_get_blob(handle, "config_data", NULL, &required_len);
+			switch (epd_cmd) {
+			case CMD_REPORT_EPD_INFO: {
+				// 从 NVS 读回数据
+				nvs_handle_t handle;
+				nvs_open("storage", NVS_READONLY, &handle);
+				size_t required_len = 0;
+				nvs_get_blob(handle, "config_data", NULL, &required_len);
 
-			uint8_t *buffer = malloc(required_len + 1);
-			buffer[required_len] = '\0'; // 确保字符串以 NULL 结尾
-			nvs_get_blob(handle, "config_data", buffer, &required_len);
+				uint8_t *buffer = malloc(required_len + 1);
+				buffer[required_len] = '\0'; // 确保字符串以 NULL 结尾
+				nvs_get_blob(handle, "config_data", buffer, &required_len);
 
-			epd = yepd_find_by_name((const char *)buffer);
+				epd = yepd_find_by_name((const char *)buffer);
 
-			if (epd != NULL) {
-				ESP_LOGI(TAG, "read epd name %s", epd->name);
-				cJSON *root = cJSON_CreateObject();
-				if (!root)
-					break;
+				if (epd != NULL) {
+					ESP_LOGI(TAG, "read epd name %s", epd->name);
+					cJSON *root = cJSON_CreateObject();
+					if (!root)
+						break;
 
-				cJSON_AddStringToObject(root, "name", epd->name);
-				cJSON_AddNumberToObject(root, "width", epd->width);
-				cJSON_AddNumberToObject(root, "height", epd->height);
-				cJSON_AddStringToObject(root, "palette", epd->palette);
-				cJSON_AddNumberToObject(root, "bpp", epd->bpp);
-				char *json_str = cJSON_PrintUnformatted(root);
+					cJSON_AddStringToObject(root, "name", epd->name);
+					cJSON_AddNumberToObject(root, "width", epd->width);
+					cJSON_AddNumberToObject(root, "height", epd->height);
+					cJSON_AddStringToObject(root, "palette", epd->palette);
+					cJSON_AddNumberToObject(root, "bpp", epd->bpp);
+					char *json_str = cJSON_PrintUnformatted(root);
 
-				rsp.attr_value.len = strlen(json_str);
+					rsp.attr_value.len = strlen(json_str);
+					rsp.attr_value.handle = param->read.handle;
+					rsp.attr_value.offset = param->read.offset;
+					rsp.attr_value.auth_req = ESP_GATT_AUTH_REQ_NONE;
+					memcpy(rsp.attr_value.value, json_str, rsp.attr_value.len);
+
+					esp_ble_gatts_send_response(gatts_if, param->read.conn_id, param->read.trans_id,
+								    ESP_GATT_OK, &rsp);
+				} else {
+					ESP_LOGE(TAG, "invalid epd name %s", (const char *)param->write.value + 1);
+					esp_ble_gatts_send_response(gatts_if, param->read.conn_id, param->read.trans_id,
+								    ESP_GATT_INVALID_HANDLE, &rsp);
+				}
+
+				free(buffer);
+				nvs_close(handle);
+			} break;
+			case CMD_SET_WIFI: {
+				// 准备响应数据
 				rsp.attr_value.handle = param->read.handle;
-				rsp.attr_value.offset = param->read.offset;
-				rsp.attr_value.auth_req = ESP_GATT_AUTH_REQ_NONE;
-				memcpy(rsp.attr_value.value, json_str, rsp.attr_value.len);
 
+				// 将 IP 字符串拷贝到响应缓存中
+				// 网页端会收到类似 "192.168.1.5" 的数据
+				uint16_t ip_len = strlen(wifi_ip_address);
+				rsp.attr_value.len = ip_len;
+				memcpy(rsp.attr_value.value, wifi_ip_address, ip_len);
+
+				ESP_LOGI(TAG, "Responding WiFi IP to web: %s", wifi_ip_address);
+
+				// 发送响应
 				esp_ble_gatts_send_response(gatts_if, param->read.conn_id, param->read.trans_id,
 							    ESP_GATT_OK, &rsp);
-			} else {
-				ESP_LOGE(TAG, "invalid epd name %s", (const char *)param->write.value + 1);
-				esp_ble_gatts_send_response(gatts_if, param->read.conn_id, param->read.trans_id,
-							    ESP_GATT_INVALID_HANDLE, &rsp);
+			} break;
+			default:
+				break;
 			}
-
-			free(buffer);
-			nvs_close(handle);
 		}
 	} break;
 	case ESP_GATTS_WRITE_EVT: {
