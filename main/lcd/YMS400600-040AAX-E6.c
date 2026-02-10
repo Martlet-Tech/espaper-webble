@@ -9,8 +9,9 @@
 #include "esp_task_wdt.h"
 #include "img_proc.h"
 
-static const char TAG[] = "E6-4.0";
+static const char TAG[] = "YMS400600-040AAX-E6";
 
+#define IO_LCD_PWR 46
 //#define IO_BS0 37
 //#define IO_BS1 36
 #define IO_RESETN 45
@@ -351,8 +352,7 @@ int YMS400600_040AAX_E6_fill_index(uint8_t *buff)
 
 	uint32_t data_buff_size = 400 * 600 / 2;
 
-	uint8_t *data_buff =
-		heap_caps_malloc(data_buff_size, MALLOC_CAP_SPIRAM);
+	uint8_t *data_buff = heap_caps_malloc(data_buff_size, MALLOC_CAP_SPIRAM);
 	if (data_buff == NULL) {
 		ESP_LOGE(TAG, "dst_image_buffer malloc fail");
 		return ESP_FAIL;
@@ -408,29 +408,80 @@ int YMS400600_040AAX_E6_update(void)
 	return 0;
 }
 
-YEPD YMS400600_040AAX_E6 = {.name ="YMS400600-040AAX-E6",
-	.width =400,
-	.height =600,
-	.palette ="0,0,0;255,255,255;255,255,0;255,0,0;0,0,255;0,255,0",
+static void gpio_initial(void)
+{
+	gpio_set_direction(IO_LCD_PWR, GPIO_MODE_OUTPUT);
+	gpio_set_level(IO_LCD_PWR, 1);
+}
+static void gpio_deinitial(void)
+{
+	gpio_set_direction(IO_RESETN, GPIO_MODE_DISABLE);
+	gpio_set_direction(IO_DC, GPIO_MODE_DISABLE);
+	gpio_set_direction(IO_cSB, GPIO_MODE_DISABLE);
+	gpio_set_direction(IO_SCLK, GPIO_MODE_DISABLE);
+	gpio_set_direction(IO_MOSI, GPIO_MODE_DISABLE);
+	gpio_set_direction(IO_MISO, GPIO_MODE_DISABLE);
+	gpio_set_direction(IO_BUSY, GPIO_MODE_DISABLE);
+
+	gpio_set_level(IO_LCD_PWR, 0);
+}
+static int display_index_buff(uint8_t *buff, size_t size)
+{
+	ESP_LOGI(TAG, "display_index_buff size %d", size);
+	gpio_initial();
+	YMS400600_040AAX_E6_init();
+
+	//YMS400600_040AAX_E6_fill_index(buff);
+	SPI_COMMAND(DTM);
+	for (int i = 0; i < size; i++) {
+		if ((i % 1000) == 0) {
+			//esp_task_wdt_reset();
+			printf(".");
+			fflush(stdout);
+			delay_ms(1);
+		}
+
+		uint8_t high = (buff[i] >> 4) & 0x0F;
+		uint8_t low = buff[i] & 0x0F;
+
+		// 2. 核心修正逻辑：如果索引 >= 4，则需要加 1
+		if (high >= 4) {
+			high++;
+		}
+		if (low >= 4) {
+			low++;
+		}
+
+		SPI_DATA((high << 4) | (low & 0x0F));
+	}
+
+	YMS400600_040AAX_E6_update();
+	delay_ms(1000);
+	gpio_deinitial();
+
+	ESP_LOGI(TAG, "display_index_buff end");
+	return 0;
+}
+
+static int clear_index_buff(uint32_t colorindex)
+{
+	ESP_LOGI(TAG, "clear_index_buff %08x", colorindex);
+
+	ESP_LOGW(TAG, "display_index_buff NOT implemented");
+
+	ESP_LOGI(TAG, "display_index_buff end");
+	return 0;
+}
+
+YEPD YMS400600_040AAX_E6 = {
+	.name = "YMS400600-040AAX-E6",
+	.width = 400,
+	.height = 600,
+	.palette = "0,0,0;255,255,255;255,255,0;255,0,0;0,0,255;0,255,0",
 	.bpp = 4,
 	.init = YMS400600_040AAX_E6_init,
 	.fill_index = YMS400600_040AAX_E6_fill_index,
 	.update = YMS400600_040AAX_E6_update,
-	.interface = YEPD_IF_SPI8S,
-	.pin_rst = 1,
-	.pin_busy = 1,
-	.pin_cs = { 1, 2, -1 },
-	.pin_sck = 1,
-	.pin_dc = -1,
-	.pin_d = { 1, 2, -1 },
-	.sections = {
-		{.x0 = 0, .y0 = 0, .x1 = 1200/2, .y1 = 1600},
-	},
-	.cmd_init = 
-		"00 00 10 a0 ff ff\n"
-		    "01 02 05 12 34 56 78\n",
-	.cmd_disp = 
-		"00 00 10 a0 ff ff\n"
-		    "01 02 05 12 34 56 78\n",
-	
+	.display_index = display_index_buff,
+	.clear = clear_index_buff,
 };
