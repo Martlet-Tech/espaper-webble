@@ -58,6 +58,28 @@ void build_data_e6(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1, uint8_t *
 	}
 }
 
+void e6epd_data_wash(uint8_t *input, uint8_t *output, size_t size)
+{
+	for (size_t i = 0; i < size; i++) {
+		uint8_t original = input[i];
+
+		// 1. 拆分出高 4 位 (第一个像素) 和低 4 位 (第二个像素)
+		uint8_t high = (original >> 4) & 0x0F;
+		uint8_t low = original & 0x0F;
+
+		// 2. 核心修正逻辑：如果索引 >= 4，则需要加 1
+		if (high >= 4) {
+			high++;
+		}
+		if (low >= 4) {
+			low++;
+		}
+
+		// 3. 重新合并回字节：高位仍在左边，低位在右边
+		output[i] = (high << 4) | (low & 0x0F);
+	}
+}
+
 YEPD *epd_list[] = {
 	&YMS400600_040AAX_E6,	 &YMS800480_073AAX_E6,	 &YMS16001200_1330AAX_E6,
 	&YMS25601440_3150AAX_E6, &YMS9841304_1248CIH_E5, NULL,

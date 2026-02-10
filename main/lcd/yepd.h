@@ -82,4 +82,7 @@ void yepd_check_high(uint32_t pin);
 void yepd_check_low(uint32_t pin);
 
 void build_data_e6(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1, uint8_t *index_buff, uint8_t *data_buff);
+// E6电子纸的调色板不是连续的012345, 而是012356, 这里处理这个
+void e6epd_data_wash(uint8_t *input, uint8_t *output, size_t size);
+
 #endif
