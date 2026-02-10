@@ -80,10 +80,13 @@ typedef enum {
 	CMD_EPD_CLEAR = 0x06, //clear epd screen
 	CMD_BATTERY_LEVEL = 0x07, //battery level, 2byte 10mV per bit, 65535*10mV=655.35V Max
 	CMD_SET_WIFI = 0x08, //set wifi ssid and password, 0x08, ssid_len, ssid, pwd_len, pwd
-	CMD_QRCODE_ONIMAGE = 0x09, //show qrcode on image, 1byte, 0:off, 1:on
-	CMD_SHOW_LAST = 0x0A, //show last saved data file at startup, 1byte, 0:off, 1:on
-	CMD_SHOW_SDCARD = 0x0B, //show sdcard image at startup, 1byte, 0:off, 1:on
+	CMD_SET_WORKING_MODE = 0x09, //show qrcode on image, 1byte, 0:off, 1:on
 } EPD_CMD;
+
+typedef enum {
+	WORKING_MODE_NORMAL = 0x00, //normal working mode
+	WORKING_MODE_ALBUM = 0x01, //album working mode
+} EPD_WORKING_MODE;
 
 typedef enum {
 	RSP_SET_NAME_OK = 0x81, // 成功 (0x80 | CMD_ID)
@@ -525,11 +528,11 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
 			epd_cmd = param->write.value[0];
 			//ESP_LOGI(TAG, "epd_cmd = %d", epd_cmd);
 			switch (epd_cmd) {
-			case CMD_RESET_EPD:
+			case CMD_RESET_EPD: {
 				ESP_LOGI(TAG, "CMD_RESET_EPD");
 				vTaskDelay(pdMS_TO_TICKS(2000));
 				esp_restart();
-				break;
+			} break;
 			case CMD_SET_EPD_NAME: {
 				ESP_LOGI(TAG, "CMD_SET_EPD_NAME");
 				epd = yepd_find_by_name((const char *)param->write.value + 1);
@@ -709,6 +712,37 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
 				// 2. 这里可以触发 WiFi 连接逻辑
 				wifi_init_sta(ssid, pwd);
 
+			} break;
+			case CMD_SET_WORKING_MODE: {
+				ESP_LOGI(TAG, "CMD_SET_WORKING_MODE");
+				if (len > 1) {
+					uint8_t new_mode = data[1]; // 获取前端传来的 0 或 1
+					ESP_LOGI(TAG, "Attempting to set working mode to: %d", new_mode);
+
+					nvs_handle_t set_handle;
+					esp_err_t err = nvs_open("storage", NVS_READWRITE, &set_handle);
+					if (err == ESP_OK) {
+						err = nvs_set_u8(set_handle, "working_mode", new_mode);
+						if (err == ESP_OK) {
+							err = nvs_commit(set_handle);
+							if (err == ESP_OK) {
+								ESP_LOGI(TAG, "NVS working_mode updated successfully.");
+							}
+						}
+						nvs_close(set_handle);
+
+						if (err == ESP_OK) {
+							ESP_LOGI(TAG, "Restarting system to apply new mode...");
+							vTaskDelay(pdMS_TO_TICKS(500)); // 留点时间打印日志
+							esp_restart();
+						}
+					} else {
+						ESP_LOGE(TAG, "Error opening NVS: %s", esp_err_to_name(err));
+					}
+				} else {
+					ESP_LOGW(TAG, "Invalid payload length for CMD_SET_WORKING_MODE");
+				}
+				break;
 			} break;
 			default:
 				ESP_LOGW(TAG, "unknown epd cmd %d", epd_cmd);

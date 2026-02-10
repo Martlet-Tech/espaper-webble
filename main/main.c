@@ -96,7 +96,8 @@ void app_main(void)
 	nvs_handle_t my_handle;
 	char saved_epd_name[64] = { 0 }; // 假设名称不会超过64字节
 	size_t required_size = sizeof(saved_epd_name);
-
+	// nvs 读取 EPD 名称
+#if 1
 	// 默认型号（防止 NVS 为空）
 	const char *default_epd_name = "YMS9841304-1248CIH-E5";
 
@@ -124,14 +125,52 @@ void app_main(void)
 	} else {
 		ESP_LOGI(TAG, "Current EPD initialized: %s", gyepd->name);
 	}
+#endif
 
+	//工作模式
+#if 1
+	// --- 续写部分：读取 Working Mode ---
+	uint8_t working_mode = 0; // 默认 0: 正常模式
+	err = nvs_open("storage", NVS_READWRITE, &my_handle); // 注意这里改用 READWRITE，因为没读到要写入
+	if (err == ESP_OK) {
+		err = nvs_get_u8(my_handle, "working_mode", &working_mode);
+		if (err == ESP_ERR_NVS_NOT_FOUND) {
+			// 如果没找到，写入默认值 0
+			working_mode = 0;
+			err = nvs_set_u8(my_handle, "working_mode", working_mode);
+			nvs_commit(my_handle);
+			ESP_LOGI(TAG, "NVS 'working_mode' not found, initialized to 0 (Normal)");
+		} else if (err == ESP_OK) {
+			ESP_LOGI(TAG, "NVS found working_mode: %d", working_mode);
+		}
+
+		// 根据读取到或初始化的 working_mode 执行分支
+		switch (working_mode) {
+		case 0:
+			ESP_LOGI(TAG, ">>> 进入分支：0 - 正常模式(Normal Mode) <<<");
+			// TODO: 可以在这里调用初始化正常模式的函数
+			break;
+		case 1:
+			ESP_LOGI(TAG, ">>> 进入分支：1 - 相册模式(Album Mode) <<<");
+			// TODO: 可以在这里调用初始化相册模式的函数
+			break;
+		default:
+			ESP_LOGW(TAG, "Unknown mode %d, falling back to Normal Mode", working_mode);
+			break;
+		}
+
+		nvs_close(my_handle); // 别忘了关闭
+	} else {
+		ESP_LOGE(TAG, "NVS open for working_mode failed: %s", esp_err_to_name(err));
+	}
+#endif
 	//gyepd->test();
 	//ESP_LOGI(TAG, "test finish");
 
-	while (1) {
+	/*while (1) {
 		//esp_pm_dump_locks(stdout);
 		vTaskDelay(pdMS_TO_TICKS(5000));
-	}
+	}*/
 
 	ESP_LOGI(TAG, "app main finish");
 	return;
