@@ -176,6 +176,31 @@ esp_err_t http_options_handler(httpd_req_t *req)
 	return ESP_OK;
 }
 
+// 处理 /save_image?time=XXXXXXXXXXXXXX
+esp_err_t save_image_handler(httpd_req_t *req)
+{
+	httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+
+	char query[64];
+	char timestamp[32] = "unknown";
+
+	// 获取 URL 参数
+	if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+		httpd_query_key_value(query, "time", timestamp, sizeof(timestamp));
+	}
+
+	// 调用 manager 保存
+	esp_err_t res = display_mgr_save_current_to_flash(timestamp);
+
+	if (res == ESP_OK) {
+		httpd_resp_sendstr(req, "Save OK");
+		return ESP_OK;
+	} else {
+		httpd_resp_send_500(req);
+		return ESP_FAIL;
+	}
+}
+
 httpd_handle_t start_web_server(void)
 {
 	httpd_handle_t server = NULL;
@@ -196,6 +221,11 @@ httpd_handle_t start_web_server(void)
 			.uri = "/upload_epd", .method = HTTP_OPTIONS, .handler = http_options_handler, .user_ctx = NULL
 		};
 		httpd_register_uri_handler(server, &options_uri);
+
+		httpd_uri_t save_image_uri = {
+			.uri = "/save_image", .method = HTTP_POST, .handler = save_image_handler, .user_ctx = NULL
+		};
+		httpd_register_uri_handler(server, &save_image_uri);
 
 		ESP_LOGI("HTTP", "Webserver started!");
 		return server;
