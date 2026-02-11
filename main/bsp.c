@@ -71,7 +71,6 @@ static const char *TAG = "bsp.c";
 
 sdmmc_card_t *card;
 
-YEPD *gyepd;
 
 int image_numbers[MAX_FILES]; // 存储所有图片的编号
 int image_count = 0; // 图片数量

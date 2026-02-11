@@ -24,6 +24,7 @@
 #include <esp_netif.h>
 #include <esp_netif_types.h>
 #include "esp_wifi.h"
+#include "display_manager.h"
 
 static const char *TAG = "IMG_PRCS";
 int display_debug = 0;

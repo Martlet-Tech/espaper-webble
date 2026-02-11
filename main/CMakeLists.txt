@@ -14,6 +14,7 @@ idf_component_register(
 			"arduino_wrapper.c"
 			"ble/gatts_table.c"
 			"wifi/wifi_sta.c"
+			"display_manager.c"
 
         INCLUDE_DIRS 	"."
 			"lcd"

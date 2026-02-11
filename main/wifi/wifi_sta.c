@@ -9,8 +9,17 @@
 #include "nvs_flash.h"
 #include "wifi_sta.h"
 
+#include <esp_http_server.h>
+#include "esp_heap_caps.h"
+#include "display_manager.h"
+#include "yepd.h"
+
 static const char *TAG = "WIFI_STA";
 char wifi_ip_address[16] = "0.0.0.0"; // 用于存储 IP 字符串
+
+#define MAX_IMAGE_SIZE (800 * 1024)
+uint8_t *img_buffer = NULL; // 指向 PSRAM 的指针
+static httpd_handle_t server_handle = NULL; // 全局或静态变量，用于管理服务器
 
 static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
 {
@@ -19,11 +28,19 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
 	} else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
 		ESP_LOGI(TAG, "Disconnected. Retrying to connect...");
 		strcpy(wifi_ip_address, "0.0.0.0"); // 断开连接时清空 IP
+
+		// 如果断开了，可以选择停止服务器释放资源，也可以不刷，看你需求
+		// if (server_handle) { stop_web_server(server_handle); server_handle = NULL; }
+
 		esp_wifi_connect();
 	} else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
 		ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
 		esp_ip4addr_ntoa(&event->ip_info.ip, wifi_ip_address, sizeof(wifi_ip_address));
 		ESP_LOGI(TAG, "Successfully got IP: " IPSTR, IP2STR(&event->ip_info.ip));
+
+		if (server_handle == NULL) {
+			server_handle = start_web_server();
+		}
 	}
 }
 
@@ -105,4 +122,83 @@ void wifi_auto_reconnect(void)
 			wifi_init_sta(ssid, pwd);
 		}
 	}
+}
+
+// POST 处理函数：接收电子纸数据
+esp_err_t epd_data_post_handler(httpd_req_t *req)
+{
+	int total_len = req->content_len;
+	int cur_len = 0;
+	int received = 0;
+
+	/*if (total_len > MAX_IMAGE_SIZE) {
+		httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "File too large");
+		return ESP_FAIL;
+	}*/
+	// TODO 应该跟剩余内存比
+
+	img_buffer = display_mgr_prepare_buffer(total_len);
+	if (img_buffer == NULL) {
+		httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Memory allocation failed");
+		return ESP_FAIL;
+	}
+
+	// 2. 循环读取数据流
+	while (cur_len < total_len) {
+		received = httpd_req_recv(req, (char *)img_buffer + cur_len, total_len - cur_len);
+		if (received <= 0) { // 检查超时或错误
+			if (received == HTTPD_SOCK_ERR_TIMEOUT)
+				continue;
+			return ESP_FAIL;
+		}
+		cur_len += received;
+	}
+
+	ESP_LOGI("HTTP", "Successfully received %d bytes in PSRAM", cur_len);
+
+	// 3. 可以在这里通知电子纸驱动去刷新 img_buffer 里的数据
+	// your_epd_flush_function(img_buffer, cur_len);
+	display_manager_trigger_refresh();
+
+	// 3. 数据接收函数里的“跨域”补充
+	httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+	httpd_resp_sendstr(req, "Data received successfully!");
+	return ESP_OK;
+}
+
+// 处理 OPTIONS 请求，解决跨域报错
+esp_err_t http_options_handler(httpd_req_t *req)
+{
+	httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+	httpd_resp_set_hdr(req, "Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+	httpd_resp_set_hdr(req, "Access-Control-Allow-Headers", "Content-Type");
+	httpd_resp_send(req, NULL, 0);
+	return ESP_OK;
+}
+
+httpd_handle_t start_web_server(void)
+{
+	httpd_handle_t server = NULL;
+	httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+	config.lru_purge_enable = true; // 自动关闭过旧的空闲连接，适合 700KB 这种大数据
+	config.stack_size = 10240; // 稍微给大一点，大数据处理更稳
+
+	if (httpd_start(&server, &config) == ESP_OK) {
+		// 1. 注册数据接收接口
+		httpd_uri_t epd_uri = { .uri = "/upload_epd",
+					.method = HTTP_POST,
+					.handler = epd_data_post_handler, // 之前定义的处理 700KB 数据的函数
+					.user_ctx = NULL };
+		httpd_register_uri_handler(server, &epd_uri);
+
+		// 2. 注册 OPTIONS 接口 (必须有，否则网页 fetch 会报错)
+		httpd_uri_t options_uri = {
+			.uri = "/upload_epd", .method = HTTP_OPTIONS, .handler = http_options_handler, .user_ctx = NULL
+		};
+		httpd_register_uri_handler(server, &options_uri);
+
+		ESP_LOGI("HTTP", "Webserver started!");
+		return server;
+	}
+	return NULL;
 }

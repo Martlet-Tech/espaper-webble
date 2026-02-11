@@ -44,6 +44,7 @@
 #include <cJSON.h>
 #include "bsp.h"
 #include "wifi_sta.h"
+#include "display_manager.h"
 
 #define TAG "TAG_GATTS_TABLE"
 
@@ -623,13 +624,12 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
 					received_bytes = 0;
 
 					// 如果之前有没释放的内存，先释放
-					if (ble_rx_buffer) {
+					/*if (ble_rx_buffer) {
 						free(ble_rx_buffer);
 						ble_rx_buffer = NULL;
-					}
+					}*/
 
-					ble_rx_buffer = (uint8_t *)heap_caps_malloc(
-						expected_total_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+					ble_rx_buffer = (uint8_t *)display_mgr_prepare_buffer(expected_total_size);
 					if (ble_rx_buffer == NULL) {
 						ESP_LOGE(TAG, "内存分配失败，大小: %ld", expected_total_size);
 					} else {
@@ -673,6 +673,9 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
 				if (received_bytes == expected_total_size) {
 					// 创建任务来处理显示
 					xTaskCreate(display_task, "display_task", 8192, NULL, 5, NULL);
+				} else {
+					ESP_LOGE(TAG, "数据传输不完整，已接收: %ld / 预期: %ld", received_bytes,
+						 expected_total_size);
 				}
 
 				esp_pm_lock_release(s_pm_cpu_lock);
@@ -991,9 +994,10 @@ void gatts_main(void)
 static void display_task(void *pvParameter)
 {
 	epd->display_index(ble_rx_buffer, received_bytes);
-
-	free(ble_rx_buffer);
-	ble_rx_buffer = NULL;
+	/*if (ble_rx_buffer) {
+		free(ble_rx_buffer);
+		ble_rx_buffer = NULL;
+	}*/
 	received_bytes = 0;
 	expected_total_size = 0;
 

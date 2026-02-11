@@ -30,8 +30,6 @@ typedef void (*callback_t)(void); // 回调函数类型定义
 #define SPIFFS_MOUNT_POINT "/spiffs"
 #define EXAMPLE_MAX_CHAR_SIZE 64
 
-extern YEPD *gyepd;
-
 extern esp_pm_lock_handle_t s_pm_cpu_lock;
 
 void bsp_gpio_initial(void);
