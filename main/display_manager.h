@@ -38,4 +38,6 @@ void display_manager_trigger_refresh(void);
  */
 esp_err_t display_mgr_save_current_to_flash(const char *filename);
 
+void album_mode_task(void *pvParameters);
+
 #endif

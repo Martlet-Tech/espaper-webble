@@ -14,6 +14,8 @@
 #include "display_manager.h"
 #include "yepd.h"
 
+bool g_wifi_needs_init = false;
+
 static const char *TAG = "WIFI_STA";
 char wifi_ip_address[16] = "0.0.0.0"; // 用于存储 IP 字符串
 

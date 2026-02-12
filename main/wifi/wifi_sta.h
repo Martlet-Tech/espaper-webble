@@ -3,6 +3,10 @@
 
 #include "esp_err.h"
 #include "esp_http_server.h"
+#include <stdbool.h>
+
+extern bool g_wifi_needs_init;
+
 /**
  * @brief 初始化并连接 WiFi
  * * @param ssid WiFi名称

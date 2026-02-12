@@ -40,6 +40,8 @@
 #include "yepd_if.h"
 #include "yepd.h"
 #include "gatts_table.h"
+#include "display_manager.h"
+#include "wifi_sta.h"
 
 static const char *TAG = "main";
 
@@ -152,7 +154,8 @@ void app_main(void)
 			break;
 		case 1:
 			ESP_LOGI(TAG, ">>> 进入分支：1 - 相册模式(Album Mode) <<<");
-			// TODO: 可以在这里调用初始化相册模式的函数
+
+			xTaskCreate(album_mode_task, "album_mode_task", 8192, NULL, 5, NULL);
 			break;
 		default:
 			ESP_LOGW(TAG, "Unknown mode %d, falling back to Normal Mode", working_mode);
@@ -167,10 +170,15 @@ void app_main(void)
 	//gyepd->test();
 	//ESP_LOGI(TAG, "test finish");
 
-	/*while (1) {
+	while (1) {
+		vTaskDelay(pdMS_TO_TICKS(1000));
 		//esp_pm_dump_locks(stdout);
-		vTaskDelay(pdMS_TO_TICKS(5000));
-	}*/
+		if (g_wifi_needs_init) {
+			g_wifi_needs_init = false;
+			// 读取 NVS 中的 WiFi 配置
+			wifi_auto_reconnect(); // 在 main_task 里跑，栈空间大，很安全
+		}
+	}
 
 	ESP_LOGI(TAG, "app main finish");
 	return;

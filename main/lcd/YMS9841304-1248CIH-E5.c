@@ -152,11 +152,11 @@ static void EPD_W21_Init(void)
 	//   EPD_W21_CS_S2_1;
 
 	EPD_W21_RST_1; // Module reset
-	driver_delay_xms(1);
-	EPD_W21_RST_0; // Module reset
-	driver_delay_xms(5);
-	EPD_W21_RST_1; // Module reset
 	driver_delay_xms(10);
+	EPD_W21_RST_0; // Module reset
+	driver_delay_xms(100);
+	EPD_W21_RST_1; // Module reset
+	driver_delay_xms(100);
 }
 
 static void EPD_lcd_chkstatus(void)
@@ -665,7 +665,7 @@ static int display_index_buff(uint8_t *datas, size_t size)
 	gpio_initial();
 
 	EPD_init();
-	ESP_LOGI("EPD", "初始化序列发送完成 ");
+	ESP_LOGI(TAG, "初始化序列发送完成 ");
 
 	int column, row;
 	const int STRIDE = 326; // 1304 / 4

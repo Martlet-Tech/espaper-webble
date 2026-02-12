@@ -737,7 +737,8 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
 				}
 
 				// 2. 这里可以触发 WiFi 连接逻辑
-				wifi_init_sta(ssid, pwd);
+				//wifi_init_sta(ssid, pwd);
+				g_wifi_needs_init = true;
 
 			} break;
 			case CMD_SET_WORKING_MODE: {
