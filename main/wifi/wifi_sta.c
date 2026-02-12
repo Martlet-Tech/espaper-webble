@@ -132,6 +132,9 @@ esp_err_t epd_data_post_handler(httpd_req_t *req)
 	int total_len = req->content_len;
 	int cur_len = 0;
 	int received = 0;
+	int last_log_progress = 0;
+
+	ESP_LOGI(TAG, "Received POST request, total_len: %d", total_len);
 
 	/*if (total_len > MAX_IMAGE_SIZE) {
 		httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "File too large");
@@ -154,17 +157,22 @@ esp_err_t epd_data_post_handler(httpd_req_t *req)
 			return ESP_FAIL;
 		}
 		cur_len += received;
+
+		if (cur_len - last_log_progress > 51200) {
+			ESP_LOGI(TAG, "Progress: %d / %d bytes", cur_len, total_len);
+			last_log_progress = cur_len;
+		}
 	}
 
-	ESP_LOGI("HTTP", "Successfully received %d bytes in PSRAM", cur_len);
-
-	// 3. 可以在这里通知电子纸驱动去刷新 img_buffer 里的数据
-	// your_epd_flush_function(img_buffer, cur_len);
-	display_manager_trigger_refresh();
+	ESP_LOGI("HTTP", "Successfully received %d bytes in PSRAM, %d packets", cur_len, received);
 
 	// 3. 数据接收函数里的“跨域”补充
 	httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
 	httpd_resp_sendstr(req, "Data received successfully!");
+
+	// 3. 可以在这里通知电子纸驱动去刷新 img_buffer 里的数据
+	// your_epd_flush_function(img_buffer, cur_len);
+	display_manager_trigger_refresh();
 	return ESP_OK;
 }
 
@@ -203,6 +211,20 @@ esp_err_t save_image_handler(httpd_req_t *req)
 	}
 }
 
+esp_err_t clear_flash_handler(httpd_req_t *req)
+{
+	httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+
+	esp_err_t res = display_mgr_clear_flash_images();
+
+	// 必须确保这行代码被执行！
+	httpd_resp_sendstr(req, "Clear Request Received");
+
+	// 等待 500ms 确保硬件响应
+	vTaskDelay(pdMS_TO_TICKS(500));
+	return ESP_OK;
+}
+
 httpd_handle_t start_web_server(void)
 {
 	httpd_handle_t server = NULL;
@@ -211,23 +233,27 @@ httpd_handle_t start_web_server(void)
 	config.stack_size = 10240; // 稍微给大一点，大数据处理更稳
 
 	if (httpd_start(&server, &config) == ESP_OK) {
-		// 1. 注册数据接收接口
-		httpd_uri_t epd_uri = { .uri = "/upload_epd",
-					.method = HTTP_POST,
-					.handler = epd_data_post_handler, // 之前定义的处理 700KB 数据的函数
-					.user_ctx = NULL };
-		httpd_register_uri_handler(server, &epd_uri);
-
 		// 2. 注册 OPTIONS 接口 (必须有，否则网页 fetch 会报错)
 		httpd_uri_t options_uri = {
 			.uri = "/upload_epd", .method = HTTP_OPTIONS, .handler = http_options_handler, .user_ctx = NULL
 		};
 		httpd_register_uri_handler(server, &options_uri);
 
+		// 1. 注册数据接收接口
+		httpd_uri_t epd_uri = {
+			.uri = "/upload_epd", .method = HTTP_POST, .handler = epd_data_post_handler, .user_ctx = NULL
+		};
+		httpd_register_uri_handler(server, &epd_uri);
+
 		httpd_uri_t save_image_uri = {
 			.uri = "/save_image", .method = HTTP_POST, .handler = save_image_handler, .user_ctx = NULL
 		};
 		httpd_register_uri_handler(server, &save_image_uri);
+
+		httpd_uri_t clear_flash_uri = {
+			.uri = "/clear_flash", .method = HTTP_POST, .handler = clear_flash_handler, .user_ctx = NULL
+		};
+		httpd_register_uri_handler(server, &clear_flash_uri);
 
 		ESP_LOGI("HTTP", "Webserver started!");
 		return server;

@@ -38,6 +38,12 @@ void display_manager_trigger_refresh(void);
  */
 esp_err_t display_mgr_save_current_to_flash(const char *filename);
 
+/**
+ * @brief 清空 SPIFFS 目录下所有图片数据文件
+ * @return esp_err_t ESP_OK 成功，其他失败
+ */
+esp_err_t display_mgr_clear_flash_images(void);
+
 void album_mode_task(void *pvParameters);
 
 #endif
