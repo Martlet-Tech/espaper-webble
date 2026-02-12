@@ -14,82 +14,91 @@
 static const char *TAG = "DispMgr";
 
 YEPD *gyepd;
-// 变量定义
-uint8_t *g_final_buffer = NULL;
-uint32_t g_buffer_size = 0;
 
-static bool g_is_displaying = false; // 全局刷屏状态锁
-static bool g_clear_pending = false; // 清空预约标志
+// 硬件互斥锁，确保刷新过程不被中断
+static SemaphoreHandle_t xHardwareMutex = NULL;
+// 用户操作时间戳（用于避让逻辑）
+static TickType_t g_last_user_action_tick = 0;
 
-uint8_t *display_mgr_prepare_buffer(uint32_t size)
+// 独立的双缓冲区信息
+typedef struct {
+	uint8_t *ptr;
+	uint32_t size;
+} DisplayBuffer;
+
+static DisplayBuffer g_user_buf = { NULL, 0 };
+static DisplayBuffer g_album_buf = { NULL, 0 };
+
+// 初始化管理模块
+void display_mgr_init(void)
 {
-	// 1. 如果之前有没释放的内存，先释放掉，防止内存泄漏
-	display_mgr_release_buffer();
-
-	ESP_LOGI(TAG, "正在申请 PSRAM: %ld 字节", size);
-
-	// 2. 尝试从 PSRAM 申请内存
-	g_final_buffer = (uint8_t *)heap_caps_malloc(size, MALLOC_CAP_SPIRAM);
-
-	if (g_final_buffer == NULL) {
-		ESP_LOGE(TAG, "❌ PSRAM 分配失败！剩余空间不足。");
-		return NULL;
+	if (xHardwareMutex == NULL) {
+		xHardwareMutex = xSemaphoreCreateMutex();
 	}
-
-	g_buffer_size = size;
-	return g_final_buffer;
+	g_last_user_action_tick = xTaskGetTickCount();
 }
 
-void display_mgr_release_buffer(void)
+// 通用的缓冲区申请函数（按需分配）
+static uint8_t *allocate_buffer(DisplayBuffer *buf, uint32_t size)
 {
-	if (g_final_buffer != NULL) {
-		free(g_final_buffer);
-		g_final_buffer = NULL;
-		ESP_LOGW(TAG, "已经释放 PSRAM: %ld 字节", g_buffer_size);
+	if (buf->ptr != NULL) {
+		heap_caps_free(buf->ptr);
 	}
-	g_buffer_size = 0;
+	buf->ptr = (uint8_t *)heap_caps_malloc(size, MALLOC_CAP_SPIRAM);
+	buf->size = (buf->ptr) ? size : 0;
+	return buf->ptr;
 }
 
-// 统一的刷屏任务
-static void display_task(void *pvParameter)
+// 暴露给 wifi_sta.c 的用户缓冲区准备函数
+uint8_t *display_mgr_prepare_user_buffer(uint32_t size)
 {
-	if (g_is_displaying) {
-		ESP_LOGW("DispMgr", "硬件忙！拒绝本次刷屏请求");
-		vTaskDelete(NULL);
+	return allocate_buffer(&g_user_buf, size);
+}
+
+// 核心刷新函数：所有刷屏请求最终都汇聚于此
+static void perform_hardware_display(uint8_t *data, uint32_t size, bool is_user_action)
+{
+	if (data == NULL || size == 0)
 		return;
+
+	// 1. 等待硬件空闲（如果正在刷屏，会在这里阻塞直到上一个 20s 结束）
+	ESP_LOGI(TAG, "等待硬件锁...");
+	if (xSemaphoreTake(xHardwareMutex, portMAX_DELAY) == pdTRUE) {
+		ESP_LOGI(TAG, ">>> 开始刷新硬件 (%s)...", is_user_action ? "用户上传" : "相册模式");
+
+		// 执行实际的刷新（假设该函数阻塞 20s）
+		gyepd->display_index(data, size);
+
+		ESP_LOGI(TAG, "<<< 刷新硬件完成");
+
+		if (is_user_action) {
+			// 如果是用户操作，更新时间戳，强制后续轮播避让 2 分钟
+			g_last_user_action_tick = xTaskGetTickCount();
+		}
+
+		xSemaphoreGive(xHardwareMutex);
 	}
+}
 
-	g_is_displaying = true; // 上锁
+// 刷新任务包装器（由 Task 调用）
+static void display_task_entry(void *pvParameter)
+{
+	DisplayBuffer *target = (DisplayBuffer *)pvParameter;
+	bool is_user = (target == &g_user_buf);
 
-	ESP_LOGI(TAG, ">>> 开始硬件刷新...");
-	gyepd->display_index(g_final_buffer, g_buffer_size);
-	ESP_LOGI(TAG, "<<< 硬件刷新完成");
+	perform_hardware_display(target->ptr, target->size, is_user);
 
-	ESP_LOGI("DispMgr", "刷屏硬件操作完成");
-
-	// 3. 检查是否有预约的清空任务
-	if (g_clear_pending) {
-		ESP_LOGI("DispMgr", "正在执行预约的清空任务...");
-		display_mgr_clear_flash_images();
-		g_clear_pending = false; // 清除预约
-	}
-
-	g_is_displaying = false; // 解锁
 	vTaskDelete(NULL);
 }
 
-void display_manager_trigger_refresh(void)
+// 触发用户图片的刷新
+void display_mgr_trigger_user_refresh(void)
 {
-	xTaskCreate(display_task, "display_task", 8192, NULL, 5, NULL);
+	xTaskCreate(display_task_entry, "user_disp_task", 8192, &g_user_buf, 5, NULL);
 }
 
 esp_err_t display_mgr_save_current_to_flash(const char *filename)
 {
-	if (g_final_buffer == NULL || g_buffer_size == 0) {
-		ESP_LOGE("DispMgr", "缓冲区为空，无法保存");
-		return ESP_FAIL;
-	}
-
 	char full_path[64];
 	snprintf(full_path, sizeof(full_path), "/spiffs/data%s.bin", filename);
 
@@ -100,10 +109,10 @@ esp_err_t display_mgr_save_current_to_flash(const char *filename)
 		return ESP_FAIL;
 	}
 
-	size_t written = fwrite(g_final_buffer, 1, g_buffer_size, f);
+	size_t written = fwrite(g_user_buf.ptr, 1, g_user_buf.size, f);
 	fclose(f);
 
-	if (written != g_buffer_size) {
+	if (written != g_user_buf.size) {
 		ESP_LOGE("DispMgr", "写入不完整!");
 		return ESP_FAIL;
 	}
@@ -137,84 +146,57 @@ esp_err_t display_mgr_clear_flash_images(void)
 	return ESP_OK;
 }
 
-esp_err_t display_mgr_request_clear(void)
-{
-	if (g_is_displaying) {
-		g_clear_pending = true; // 正在刷屏，先预约
-		ESP_LOGI("DispMgr", "硬件忙，清空请求已预约，刷屏后执行...");
-		return ESP_OK;
-	}
-	// 如果不忙，直接清空
-	return display_mgr_clear_flash_images();
-}
+// ---------------- 相册轮播模式 ----------------
 
-// 简单的轮播任务
 void album_mode_task(void *pvParameters)
 {
 	ESP_LOGI("Album", "相册模式启动...");
+	const TickType_t pause_interval = pdMS_TO_TICKS(120 * 1000); // 2分钟避让期
 
 	while (1) {
-		// ... 遍历文件逻辑 ...
-		DIR *dp = opendir("/spiffs");
-		if (!dp) {
-			ESP_LOGE("Album", "无法打开目录");
+		// 1. 避让检查：如果距离上次用户操作不足 2 分钟，则休眠等待
+		TickType_t now = xTaskGetTickCount();
+		if (now - g_last_user_action_tick < pause_interval) {
+			ESP_LOGD("Album", "用户近期有操作，相册模式避让中...");
 			vTaskDelay(pdMS_TO_TICKS(5000));
 			continue;
 		}
 
-		struct dirent *entry;
-		bool found_any = false;
+		DIR *dp = opendir("/spiffs");
+		if (!dp) {
+			vTaskDelay(pdMS_TO_TICKS(10000));
+			continue;
+		}
 
+		struct dirent *entry;
 		while ((entry = readdir(dp)) != NULL) {
-			// 匹配你的文件名格式 data2026...bin
 			if (strstr(entry->d_name, "data") && strstr(entry->d_name, ".bin")) {
-				found_any = true;
-				char full_path[256 + 16];
+				// 再次检查用户避让（防止遍历文件期间用户突然操作）
+				if (xTaskGetTickCount() - g_last_user_action_tick < pause_interval)
+					break;
+
+				char full_path[300];
 				snprintf(full_path, sizeof(full_path), "/spiffs/%s", entry->d_name);
 
-				ESP_LOGI("Album", "正在轮播图片: %s", full_path);
-
-				// 1. 检查硬件是否正在被 WiFi/BLE 占用
-				if (g_is_displaying) {
-					ESP_LOGW("Album", "硬件忙，避让中...");
-					vTaskDelay(pdMS_TO_TICKS(5000)); // 歇 5 秒再看
-					continue;
-				}
-
-				if (g_clear_pending) {
-					ESP_LOGW("Album", "清空任务已预约，避让中...");
-					vTaskDelay(pdMS_TO_TICKS(1000));
-					continue;
-				}
-
-				// 加载并显示
 				struct stat st;
 				if (stat(full_path, &st) == 0) {
-					uint8_t *buf = display_mgr_prepare_buffer(st.st_size);
+					// 申请相册专用缓冲区并读取文件
+					uint8_t *buf = allocate_buffer(&g_album_buf, st.st_size);
 					if (buf) {
 						FILE *f = fopen(full_path, "rb");
 						fread(buf, 1, st.st_size, f);
 						fclose(f);
-						g_buffer_size = st.st_size;
 
-						// 3. 再次确认锁（防止读取文件期间被 WiFi 抢占）
-						if (!g_is_displaying) {
-							g_buffer_size = st.st_size;
-							display_manager_trigger_refresh();
-						}
+						ESP_LOGI("Album", "准备轮播: %s", entry->d_name);
+						// 调用硬件刷新逻辑（会等待硬件锁）
+						perform_hardware_display(g_album_buf.ptr, g_album_buf.size, false);
 
-						// 💡 重点：电子纸刷新慢，且为了省电/保护屏幕，建议轮播间隔长一点
-						// 比如 10 分钟换一张图
 						vTaskDelay(pdMS_TO_TICKS(1 * 60 * 1000));
 					}
 				}
 			}
 		}
 		closedir(dp);
-
-		if (!found_any) {
-			ESP_LOGW("Album", "未找到任何图片，10秒后重试");
-			vTaskDelay(pdMS_TO_TICKS(10000));
-		}
+		vTaskDelay(pdMS_TO_TICKS(10000));
 	}
 }

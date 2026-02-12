@@ -142,7 +142,7 @@ esp_err_t epd_data_post_handler(httpd_req_t *req)
 	}*/
 	// TODO 应该跟剩余内存比
 
-	img_buffer = display_mgr_prepare_buffer(total_len);
+	img_buffer = display_mgr_prepare_user_buffer(total_len);
 	if (img_buffer == NULL) {
 		httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Memory allocation failed");
 		return ESP_FAIL;
@@ -172,7 +172,7 @@ esp_err_t epd_data_post_handler(httpd_req_t *req)
 
 	// 3. 可以在这里通知电子纸驱动去刷新 img_buffer 里的数据
 	// your_epd_flush_function(img_buffer, cur_len);
-	display_manager_trigger_refresh();
+	display_mgr_trigger_user_refresh();
 	return ESP_OK;
 }
 
@@ -215,7 +215,7 @@ esp_err_t clear_flash_handler(httpd_req_t *req)
 {
 	httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
 
-	esp_err_t res = display_mgr_clear_flash_images();
+	display_mgr_clear_flash_images();
 
 	// 必须确保这行代码被执行！
 	httpd_resp_sendstr(req, "Clear Request Received");

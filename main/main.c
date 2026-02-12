@@ -84,6 +84,7 @@ void app_main(void)
 	ESP_ERROR_CHECK(ret);
 
 	init_spiffs();
+	display_mgr_init();
 
 	gatts_main();
 
