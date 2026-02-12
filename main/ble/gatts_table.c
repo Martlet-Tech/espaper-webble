@@ -298,7 +298,6 @@ static const esp_gatts_attr_db_t gatt_db[HRS_IDX_NB] = {
 
 };
 
-static void display_task(void *pvParameter);
 static void display_clear_task(void *pvParameter);
 
 static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
@@ -672,7 +671,7 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
 
 				if (received_bytes == expected_total_size) {
 					// 创建任务来处理显示
-					xTaskCreate(display_task, "display_task", 8192, NULL, 5, NULL);
+					display_manager_trigger_refresh();
 				} else {
 					ESP_LOGE(TAG, "数据传输不完整，已接收: %ld / 预期: %ld", received_bytes,
 						 expected_total_size);
@@ -990,20 +989,6 @@ void gatts_main(void)
 	if (local_mtu_ret) {
 		ESP_LOGE(TAG, "set local  MTU failed, error code = %x", local_mtu_ret);
 	}
-}
-
-static void display_task(void *pvParameter)
-{
-	epd->display_index(ble_rx_buffer, received_bytes);
-	/*if (ble_rx_buffer) {
-		free(ble_rx_buffer);
-		ble_rx_buffer = NULL;
-	}*/
-	received_bytes = 0;
-	expected_total_size = 0;
-
-	// 结束任务
-	vTaskDelete(NULL);
 }
 
 static void display_clear_task(void *pvParameter)
