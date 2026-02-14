@@ -25,18 +25,31 @@
 #include "utils.h"
 #include "img_proc.h"
 
-#define PIN_PWR GPIO_NUM_12
-#define PIN_CS_M1 GPIO_NUM_1
-#define PIN_BS GPIO_NUM_2
-#define PIN_BUSY_M1 GPIO_NUM_3
-#define PIN_RESET GPIO_NUM_4
-#define PIN_DC GPIO_NUM_5
-#define PIN_CS_S1 GPIO_NUM_6
-#define PIN_SCK GPIO_NUM_7
-#define PIN_MOSI GPIO_NUM_8
-#define PIN_CS_S2 GPIO_NUM_9
-#define PIN_BUSY_M2 GPIO_NUM_10
-#define PIN_CS_M2 GPIO_NUM_11
+//#define PIN_PWR GPIO_NUM_12
+//#define PIN_CS_M1 GPIO_NUM_1
+//#define PIN_BS GPIO_NUM_2
+//#define PIN_BUSY_M1 GPIO_NUM_3
+//#define PIN_RESET GPIO_NUM_4
+//#define PIN_DC GPIO_NUM_5
+//#define PIN_CS_S1 GPIO_NUM_6
+//#define PIN_SCK GPIO_NUM_7
+//#define PIN_MOSI GPIO_NUM_8
+//#define PIN_CS_S2 GPIO_NUM_9
+//#define PIN_BUSY_M2 GPIO_NUM_10
+//#define PIN_CS_M2 GPIO_NUM_11
+
+#define PIN_CS_M1 GPIO_NUM_4
+#define PIN_BS GPIO_NUM_5
+#define PIN_BUSY_M1 GPIO_NUM_6
+#define PIN_RESET GPIO_NUM_7
+#define PIN_DC GPIO_NUM_8
+#define PIN_CS_S1 GPIO_NUM_9
+#define PIN_SCK GPIO_NUM_10
+#define PIN_MOSI GPIO_NUM_11
+#define PIN_CS_S2 GPIO_NUM_12
+#define PIN_PWR GPIO_NUM_46
+#define PIN_CS_M2 GPIO_NUM_21
+#define PIN_BUSY_M2 GPIO_NUM_48
 
 static const char TAG[] = "YMS9841304-1248CIH-E5.c";
 
@@ -759,7 +772,7 @@ static void test_task(void *pvParameter)
 	vTaskDelete(NULL);
 }
 
-void test_YMS9841304_1248CIH_E5(void)
+static void test_YMS9841304_1248CIH_E5(void)
 {
 	xTaskCreate(test_task, "test_task", 4096, NULL, 5, NULL);
 
@@ -776,8 +789,8 @@ L*	a*	b*	R (红)	G (绿)	B (蓝)	16进制代码	预览
 35	-21	10	48	91	74	#305B4A	💚
 */
 
-YEPD YMS9841304_1248CIH_E5 = {
-	.name = "YMS9841304-1248CIH-E5",
+YEPD YMS9841304_1248CIH_E5_V2 = {
+	.name = "YMS9841304-1248CIH-E5-V2",
 	.width = 1304,
 	.height = 984,
 	// black=00 white=01 red=11 yellow=10
