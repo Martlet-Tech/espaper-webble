@@ -21,6 +21,8 @@ static const char TAG[] = "E6-7.3";
 #define IO_MISO 12
 #define IO_BUSY 48
 
+#define IO_LCD_PWR 46
+
 //OUTPUT
 //#define DC 	P5OUT_bit.P5OUT0
 #define DC_L gpio_set_level(IO_DC, 0)
@@ -77,9 +79,13 @@ static const char TAG[] = "E6-7.3";
 #define T_VDCS 0x84
 #define PWS 0xE3
 
-static void io_initial(void)
+static void gpio_initial(void)
 {
 	gpio_config_t gpiocfg = {};
+
+	gpio_set_direction(IO_LCD_PWR, GPIO_MODE_OUTPUT);
+	gpio_set_level(IO_LCD_PWR, 1);
+	vTaskDelay(pdMS_TO_TICKS(100));
 
 	// 初始化 IO_BS0
 	gpiocfg.intr_type = GPIO_INTR_DISABLE;
@@ -117,6 +123,19 @@ static void io_initial(void)
 	gpio_config(&gpiocfg_in_lcd);
 
 	ESP_LOGI(TAG, "io_initial completed");
+}
+
+static void gpio_deinitial(void)
+{
+	gpio_set_direction(IO_RESETN, GPIO_MODE_DISABLE);
+	gpio_set_direction(IO_DC, GPIO_MODE_DISABLE);
+	gpio_set_direction(IO_cSB, GPIO_MODE_DISABLE);
+	gpio_set_direction(IO_SCLK, GPIO_MODE_DISABLE);
+	gpio_set_direction(IO_MOSI, GPIO_MODE_DISABLE);
+	gpio_set_direction(IO_MISO, GPIO_MODE_DISABLE);
+	gpio_set_direction(IO_BUSY, GPIO_MODE_DISABLE);
+
+	gpio_set_level(IO_LCD_PWR, 0);
 }
 
 static void spi_9b_init(void)
@@ -322,8 +341,6 @@ static void EPD_Init()
 
 int YMS800480_073AAX_E6_init(void)
 {
-	io_initial();
-	delay_ms(100);
 
 	spi_9b_init();
 	delay_ms(100);
@@ -404,6 +421,44 @@ int YMS800480_073AAX_E6_update(void)
 	return 0;
 }
 
+static int display_index_buff(uint8_t *buff, size_t size)
+{
+	ESP_LOGI(TAG, "display_index_buff size %d", size);
+	gpio_initial();
+	YMS800480_073AAX_E6_init();
+
+	//YMS400600_040AAX_E6_fill_index(buff);
+	SPI_COMMAND(DTM);
+	for (int i = 0; i < size; i++) {
+		if ((i % 1000) == 0) {
+			//esp_task_wdt_reset();
+			printf(".");
+			fflush(stdout);
+			delay_ms(1);
+		}
+
+		uint8_t high = (buff[i] >> 4) & 0x0F;
+		uint8_t low = buff[i] & 0x0F;
+
+		// 2. 核心修正逻辑：如果索引 >= 4，则需要加 1
+		if (high >= 4) {
+			high++;
+		}
+		if (low >= 4) {
+			low++;
+		}
+
+		SPI_DATA((high << 4) | (low & 0x0F));
+	}
+
+	YMS800480_073AAX_E6_update();
+	delay_ms(1000);
+	gpio_deinitial();
+
+	ESP_LOGI(TAG, "display_index_buff end");
+	return 0;
+}
+
 YEPD YMS800480_073AAX_E6 = {.name ="YMS800480-073AAX-E6",
 	.width =800,
 	.height =480,
@@ -412,6 +467,7 @@ YEPD YMS800480_073AAX_E6 = {.name ="YMS800480-073AAX-E6",
 	.init =YMS800480_073AAX_E6_init,
 	.fill_index =YMS800480_073AAX_E6_fill_index,
 	.update =YMS800480_073AAX_E6_update,
+	.display_index = display_index_buff,
 	.interface = YEPD_IF_SPI8S,
 	.pin_rst = 1,
 	.pin_busy = 1,

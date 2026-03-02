@@ -30,13 +30,12 @@
 #define SPI_CLK 12
 #define SPI_Data0_MOSI 11
 #define SPI_Data1_MISO 10
-#define SPI_Data2 0
-#define SPI_Data3 0
 
 //==============   GPIO Setting   ==============//
 // Please modify the pin number
 #define EPD_BUSY 14
 #define EPD_RST 21
+#define IO_LCD_PWR 46
 
 //===============================================
 
@@ -172,9 +171,14 @@ void epd_wcmd_2ch(const unsigned char cmd, const unsigned char *data, unsigned i
 		epd_set_io(PIN_CS_S, 1);
 }
 //====================================================================
-static void io_initial(void)
+static void gpio_initial(void)
 {
 	esp_err_t ret;
+
+	// 初始化 IO_LCD_PWR
+	gpio_set_direction(IO_LCD_PWR, GPIO_MODE_OUTPUT);
+	gpio_set_level(IO_LCD_PWR, 1);
+	vTaskDelay(pdMS_TO_TICKS(100));
 
 	spi_bus_config_t bus_config = {
 		.mosi_io_num = SPI_Data0_MOSI,
@@ -233,6 +237,20 @@ static void io_initial(void)
 	delayms(20);
 }
 
+static void gpio_deinitial(void){
+	// 关闭 IO_LCD_PWR
+	gpio_set_direction(PIN_CS_M, GPIO_MODE_DISABLE);
+	gpio_set_direction(PIN_CS_S, GPIO_MODE_DISABLE);
+	gpio_set_direction(SPI_CLK, GPIO_MODE_DISABLE);
+	gpio_set_direction(SPI_Data0_MOSI, GPIO_MODE_DISABLE);
+	gpio_set_direction(SPI_Data1_MISO, GPIO_MODE_DISABLE);
+	gpio_set_direction(EPD_BUSY, GPIO_MODE_DISABLE);
+	gpio_set_direction(EPD_RST, GPIO_MODE_DISABLE);
+
+	gpio_set_level(IO_LCD_PWR, 0);	
+}
+
+
 static void epdHardwareReset(void)
 {
 	resetPin(GPIO_HIGH);
@@ -247,14 +265,16 @@ static void epdHardwareReset(void)
 	delayms(30);
 }
 
-int EL133UF1_Init(void)
+void EL133UF1_Init(void)
 {
-	io_initial();
+	gpio_initial();
+	ESP_LOGI(TAG, "EL133UF1_Init");
 
 	epdHardwareReset();
+	ESP_LOGI(TAG, "EPD reset done");
 
 	yepd_check_high(EPD_BUSY);
-	ESP_LOGI(TAG, "EPD reset ok\r\n");
+	ESP_LOGI(TAG, "EPD ready\r\n");
 
 	epd_wcmd_2ch(AN_TM, AN_TM_V, sizeof(AN_TM_V), CS_MASK_MASTER);
 	epd_wcmd_2ch(CMD66, CMD66_V, sizeof(CMD66_V), CS_MASK_ALL);
@@ -274,7 +294,6 @@ int EL133UF1_Init(void)
 	epd_wcmd_2ch(TFT_VCOM_POWER, TFT_VCOM_POWER_V, sizeof(TFT_VCOM_POWER_V), CS_MASK_MASTER);
 
 	ESP_LOGI(TAG, "EPD initial command send done\r\n");
-	return 0;
 }
 
 void EL133UF1_DisplayFrame(const unsigned char *frame_buffer_m, const unsigned char *frame_buffer_s)
@@ -401,6 +420,39 @@ int EL133UF1_new_update(void)
 	return 0;
 }
 
+static int display_index_buff(uint8_t *buff, size_t size)
+{
+	ESP_LOGI(TAG, "display_index_buff size %d", size);
+	//gpio_initial();
+
+	EL133UF1_new_init();
+
+	dst_image_buffer_m = heap_caps_malloc(DST_FRAME_SIZE, MALLOC_CAP_SPIRAM);
+	dst_image_buffer_s = heap_caps_malloc(DST_FRAME_SIZE, MALLOC_CAP_SPIRAM);
+	if (dst_image_buffer_m == NULL || dst_image_buffer_s == NULL) {
+		ESP_LOGE(TAG, "dst_image_buffer malloc fail");
+		return ESP_FAIL;
+	}
+
+	for (int j = 0; j < 1600; j++) {
+		for (int i = 0; i < 1200 / 2 / 2; i++) {
+			*dst_image_buffer_m++ = buff[i + j * 1200 / 2];
+		}
+
+		for (int i = 1200 / 2 / 2; i < 1200 / 2; i++) {
+			*dst_image_buffer_s++ = buff[i + j * 1200 / 2];
+		}
+	}
+
+	EL133UF1_new_update();
+
+	delay_ms(1000);
+	gpio_deinitial();
+
+	ESP_LOGI(TAG, "display_index_buff end");
+	return 0;
+}
+
 YEPD YMS16001200_1330AAX_E6 = {
 	.name = "YMS16001200-1330AAX-E6",
 	.width = 1200,
@@ -410,6 +462,8 @@ YEPD YMS16001200_1330AAX_E6 = {
 	.init = EL133UF1_new_init,
 	.fill_index = EL133UF1_new_fill_index,
 	.update = EL133UF1_new_update,
+	.display_index = display_index_buff,
+
 	.interface = YEPD_IF_SPI8S,
 	.pin_rst = 21,
 	.pin_busy = 14,

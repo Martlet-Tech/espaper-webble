@@ -151,7 +151,7 @@ esp_err_t display_mgr_clear_flash_images(void)
 void album_mode_task(void *pvParameters)
 {
 	ESP_LOGI("Album", "相册模式启动...");
-	const TickType_t pause_interval = pdMS_TO_TICKS(120 * 1000); // 2分钟避让期
+	const TickType_t pause_interval = pdMS_TO_TICKS(20 * 1000); // 2分钟避让期
 
 	while (1) {
 		// 1. 避让检查：如果距离上次用户操作不足 2 分钟，则休眠等待

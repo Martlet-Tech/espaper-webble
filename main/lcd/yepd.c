@@ -27,6 +27,7 @@ extern YEPD YMS800480_073AAX_E6;
 extern YEPD YMS16001200_1330AAX_E6;
 extern YEPD YMS25601440_3150AAX_E6;
 extern YEPD YMS9841304_1248CIH_E5;
+extern YEPD YMS9841304_1248CIH_E5_V2;
 
 void build_data_e6(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1, uint8_t *index_buff, uint8_t *data_buff)
 {
@@ -80,10 +81,13 @@ void e6epd_data_wash(uint8_t *input, uint8_t *output, size_t size)
 	}
 }
 
-YEPD *epd_list[] = {
-	&YMS400600_040AAX_E6,	 &YMS800480_073AAX_E6,	 &YMS16001200_1330AAX_E6,
-	&YMS25601440_3150AAX_E6, &YMS9841304_1248CIH_E5, NULL,
-};
+YEPD *epd_list[] = { &YMS400600_040AAX_E6,
+		     &YMS800480_073AAX_E6,
+		     &YMS16001200_1330AAX_E6,
+		     &YMS25601440_3150AAX_E6,
+		     &YMS9841304_1248CIH_E5,
+		     &YMS9841304_1248CIH_E5_V2,
+		     NULL };
 
 static int yepd_get_index_by_name(const char *module_name)
 {

@@ -470,9 +470,13 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
 			case CMD_REPORT_EPD_INFO: {
 				// 从 NVS 读回数据
 				nvs_handle_t handle;
+				cJSON *root = NULL;
 				nvs_open("storage", NVS_READONLY, &handle);
 				size_t required_len = 0;
 				nvs_get_blob(handle, "config_data", NULL, &required_len);
+
+				if (required_len == 0)
+					ESP_LOGE(TAG, "config_data not found");
 
 				uint8_t *buffer = malloc(required_len + 1);
 				buffer[required_len] = '\0'; // 确保字符串以 NULL 结尾
@@ -482,7 +486,7 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
 
 				if (epd != NULL) {
 					ESP_LOGI(TAG, "read epd name %s", epd->name);
-					cJSON *root = cJSON_CreateObject();
+					root = cJSON_CreateObject();
 					if (!root)
 						break;
 
@@ -498,15 +502,16 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
 					rsp.attr_value.offset = param->read.offset;
 					rsp.attr_value.auth_req = ESP_GATT_AUTH_REQ_NONE;
 					memcpy(rsp.attr_value.value, json_str, rsp.attr_value.len);
-
-					esp_ble_gatts_send_response(gatts_if, param->read.conn_id, param->read.trans_id,
-								    ESP_GATT_OK, &rsp);
 				} else {
 					ESP_LOGE(TAG, "invalid epd name %s", (const char *)param->write.value + 1);
-					esp_ble_gatts_send_response(gatts_if, param->read.conn_id, param->read.trans_id,
-								    ESP_GATT_INVALID_HANDLE, &rsp);
 				}
 
+				esp_ble_gatts_send_response(gatts_if, param->read.conn_id, param->read.trans_id,
+							    ESP_GATT_OK, &rsp);
+
+				vTaskDelay(pdMS_TO_TICKS(1000));
+				if (root)
+					cJSON_Delete(root);
 				free(buffer);
 				nvs_close(handle);
 			} break;
@@ -593,6 +598,11 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
 								    false);
 
 					nvs_close(my_handle);
+
+					vTaskDelay(pdMS_TO_TICKS(1000));
+
+					//系统重启
+					esp_restart();
 				} else {
 					ESP_LOGE(TAG, "invalid epd name %s", (const char *)param->write.value + 1);
 					uint8_t rsp[] = { RSP_SET_NAME_ERR };
