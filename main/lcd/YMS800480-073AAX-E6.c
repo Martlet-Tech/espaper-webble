@@ -7,6 +7,7 @@
 #include "esp_log.h"
 #include "esp_task_wdt.h"
 #include "img_proc.h"
+#include "eink_e6.h"
 
 static const char TAG[] = "E6-7.3";
 
@@ -341,7 +342,6 @@ static void EPD_Init()
 
 int YMS800480_073AAX_E6_init(void)
 {
-
 	spi_9b_init();
 	delay_ms(100);
 
@@ -459,10 +459,11 @@ static int display_index_buff(uint8_t *buff, size_t size)
 	return 0;
 }
 
-YEPD YMS800480_073AAX_E6 = {.name ="YMS800480-073AAX-E6",
+YEPD YMS800480_073AAX_E6 = {
+	.name ="YMS800480-073AAX-E6",
 	.width =800,
 	.height =480,
-	.palette ="0,0,0;255,255,255;255,255,0;255,0,0;0,0,255;0,255,0",
+	.palette = EINK_E6_PALETTE,
 	.bpp = 4,
 	.init =YMS800480_073AAX_E6_init,
 	.fill_index =YMS800480_073AAX_E6_fill_index,

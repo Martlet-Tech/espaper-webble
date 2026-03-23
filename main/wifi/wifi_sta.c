@@ -13,6 +13,7 @@
 #include "esp_heap_caps.h"
 #include "display_manager.h"
 #include "yepd.h"
+#include "esp_gap_ble_api.h"
 
 bool g_wifi_needs_init = false;
 
@@ -31,9 +32,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
 		ESP_LOGI(TAG, "Disconnected. Retrying to connect...");
 		strcpy(wifi_ip_address, "0.0.0.0"); // 断开连接时清空 IP
 
-		// 如果断开了，可以选择停止服务器释放资源，也可以不刷，看你需求
-		// if (server_handle) { stop_web_server(server_handle); server_handle = NULL; }
-
+		vTaskDelay(pdMS_TO_TICKS(250));
 		esp_wifi_connect();
 	} else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
 		ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
@@ -91,6 +90,9 @@ void wifi_init_sta(const char *ssid, const char *pass)
 	ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
 	ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
 
+	esp_ble_gap_stop_advertising(); // 需要 #include "esp_gap_ble_api.h"
+	vTaskDelay(pdMS_TO_TICKS(50));
+
 	// 4. 启动 WiFi
 	ESP_LOGI(TAG, "Starting WiFi and connecting to SSID:%s...", ssid);
 	esp_err_t ret = esp_wifi_start();
@@ -98,7 +100,7 @@ void wifi_init_sta(const char *ssid, const char *pass)
 		is_started = true;
 		// 💡 绝招：限制发射功率。80 代表 20dBm（最大），可以试着降到 50-60 (12.5dBm - 15dBm)
 		// 这能显著降低瞬间峰值电流，防止 Brownout 重启
-		esp_wifi_set_max_tx_power(60);
+		esp_wifi_set_max_tx_power(80);
 		esp_wifi_connect();
 	} else {
 		ESP_LOGE(TAG, "WiFi start failed: %s", esp_err_to_name(ret));

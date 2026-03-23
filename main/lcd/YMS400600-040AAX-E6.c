@@ -8,6 +8,7 @@
 #include "esp_log.h"
 #include "esp_task_wdt.h"
 #include "img_proc.h"
+#include "eink_e6.h"
 
 static const char TAG[] = "YMS400600-040AAX-E6";
 
@@ -477,7 +478,7 @@ YEPD YMS400600_040AAX_E6 = {
 	.name = "YMS400600-040AAX-E6",
 	.width = 400,
 	.height = 600,
-	.palette = "0,0,0;255,255,255;255,255,0;255,0,0;0,0,255;0,255,0",
+	.palette = EINK_E6_PALETTE,
 	.bpp = 4,
 	.init = YMS400600_040AAX_E6_init,
 	.fill_index = YMS400600_040AAX_E6_fill_index,

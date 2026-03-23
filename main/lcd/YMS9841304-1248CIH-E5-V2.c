@@ -24,19 +24,7 @@
 #include "yepd_if.h"
 #include "utils.h"
 #include "img_proc.h"
-
-//#define PIN_PWR GPIO_NUM_12
-//#define PIN_CS_M1 GPIO_NUM_1
-//#define PIN_BS GPIO_NUM_2
-//#define PIN_BUSY_M1 GPIO_NUM_3
-//#define PIN_RESET GPIO_NUM_4
-//#define PIN_DC GPIO_NUM_5
-//#define PIN_CS_S1 GPIO_NUM_6
-//#define PIN_SCK GPIO_NUM_7
-//#define PIN_MOSI GPIO_NUM_8
-//#define PIN_CS_S2 GPIO_NUM_9
-//#define PIN_BUSY_M2 GPIO_NUM_10
-//#define PIN_CS_M2 GPIO_NUM_11
+#include "eink_e5.h"
 
 #define PIN_CS_M1 GPIO_NUM_4
 #define PIN_BS GPIO_NUM_5
@@ -794,7 +782,7 @@ YEPD YMS9841304_1248CIH_E5_V2 = {
 	.width = 1304,
 	.height = 984,
 	// black=00 white=01 red=11 yellow=10
-	.palette = "0,0,0;255,255,255;255,255,0;255,0,0",
+	.palette = EINK_E5_PALETTE,
 	.bpp = 2,
 	.clear = clear_index_buff,
 	.display_index = display_index_buff,

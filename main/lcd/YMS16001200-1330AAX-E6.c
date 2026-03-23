@@ -24,6 +24,7 @@
 #include "yepd_if.h"
 #include "utils.h"
 #include "img_proc.h"
+#include "eink_e6.h"
 
 #define PIN_CS_M 13
 #define PIN_CS_S 9
@@ -35,7 +36,7 @@
 // Please modify the pin number
 #define EPD_BUSY 14
 #define EPD_RST 21
-#define IO_LCD_PWR 46
+#define IO_LCD_PWR 3
 
 //===============================================
 
@@ -237,7 +238,8 @@ static void gpio_initial(void)
 	delayms(20);
 }
 
-static void gpio_deinitial(void){
+static void gpio_deinitial(void)
+{
 	// 关闭 IO_LCD_PWR
 	gpio_set_direction(PIN_CS_M, GPIO_MODE_DISABLE);
 	gpio_set_direction(PIN_CS_S, GPIO_MODE_DISABLE);
@@ -247,9 +249,8 @@ static void gpio_deinitial(void){
 	gpio_set_direction(EPD_BUSY, GPIO_MODE_DISABLE);
 	gpio_set_direction(EPD_RST, GPIO_MODE_DISABLE);
 
-	gpio_set_level(IO_LCD_PWR, 0);	
+	gpio_set_level(IO_LCD_PWR, 0);
 }
-
 
 static void epdHardwareReset(void)
 {
@@ -423,7 +424,6 @@ int EL133UF1_new_update(void)
 static int display_index_buff(uint8_t *buff, size_t size)
 {
 	ESP_LOGI(TAG, "display_index_buff size %d", size);
-	//gpio_initial();
 
 	EL133UF1_new_init();
 
@@ -434,13 +434,15 @@ static int display_index_buff(uint8_t *buff, size_t size)
 		return ESP_FAIL;
 	}
 
+	uint8_t *p_m = dst_image_buffer_m;
+	uint8_t *p_s = dst_image_buffer_s;
+
 	for (int j = 0; j < 1600; j++) {
 		for (int i = 0; i < 1200 / 2 / 2; i++) {
-			*dst_image_buffer_m++ = buff[i + j * 1200 / 2];
+			*p_m++ = remap_packed_byte(buff[i + j * 1200 / 2]);
 		}
-
 		for (int i = 1200 / 2 / 2; i < 1200 / 2; i++) {
-			*dst_image_buffer_s++ = buff[i + j * 1200 / 2];
+			*p_s++ = remap_packed_byte(buff[i + j * 1200 / 2]);
 		}
 	}
 
@@ -457,7 +459,7 @@ YEPD YMS16001200_1330AAX_E6 = {
 	.name = "YMS16001200-1330AAX-E6",
 	.width = 1200,
 	.height = 1600,
-	.palette = "0,0,0;255,255,255;255,255,0;180,0,0;0,0,180;0,180,0",
+	.palette = EINK_E6_PALETTE,
 	.bpp = 4,
 	.init = EL133UF1_new_init,
 	.fill_index = EL133UF1_new_fill_index,
