@@ -52,6 +52,8 @@
 #define PROFILE_APP_IDX 0
 #define ESP_APP_ID 0x55
 const char *SAMPLE_DEVICE_NAME = "YESEPD_GATTS_DEMO";
+char saved_custom_name[64] = { 0 };
+size_t custom_name_size = sizeof(saved_custom_name);
 #define SVC_INST_ID 0
 
 /* The max length of characteristic value. When the GATT client performs a write or prepare write operation,
@@ -84,6 +86,7 @@ typedef enum {
 	CMD_BATTERY_LEVEL = 0x07, //battery level, 2byte 10mV per bit, 65535*10mV=655.35V Max
 	CMD_SET_WIFI = 0x08, //set wifi ssid and password, 0x08, ssid_len, ssid, pwd_len, pwd
 	CMD_SET_WORKING_MODE = 0x09, //show qrcode on image, 1byte, 0:off, 1:on
+	CMD_SET_CUSTOM_NAME = 0x0A, //set custom name, 0x0A, name_len, name
 } EPD_CMD;
 
 typedef enum {
@@ -93,6 +96,7 @@ typedef enum {
 
 typedef enum {
 	RSP_SET_NAME_OK = 0x81, // 成功 (0x80 | CMD_ID)
+	RSP_SET_CUSTOM_NAME_OK = 0x82, // 成功 (0x80 | CMD_ID)
 	RSP_SET_NAME_ERR = 0x8F, // 失败
 } EPD_RSP;
 
@@ -427,7 +431,12 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
 			ESP_LOGE(TAG, "set device name failed, error code = %x", set_dev_name_ret);
 		}
 #ifdef CONFIG_SET_RAW_ADV_DATA
-		esp_err_t raw_adv_ret = esp_ble_gap_config_adv_data_raw(raw_adv_data, sizeof(raw_adv_data));
+		esp_err_t raw_adv_ret;
+		if (custom_name_size > 0) {
+			memset(raw_adv_data + 12, ' ', 14);
+			memcpy(raw_adv_data + 12, saved_custom_name, custom_name_size > 14 ? 14 : custom_name_size);
+		}
+		raw_adv_ret = esp_ble_gap_config_adv_data_raw(raw_adv_data, sizeof(raw_adv_data));
 		if (raw_adv_ret) {
 			ESP_LOGE(TAG, "config raw adv data failed, error code = %x ", raw_adv_ret);
 		}
@@ -781,11 +790,51 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
 				}
 				break;
 			} break;
+			case CMD_SET_CUSTOM_NAME: {
+				ESP_LOGI(TAG, "CMD_SET_CUSTOM_NAME");
+				size_t len = param->write.len - 1;
+
+				char name[33] = { 0 };
+				memcpy(name, &data[1], len); // 注意：从索引 2 开始
+				ESP_LOGI(TAG, "Received custom name: %s, len = %d", name, len);
+
+				nvs_handle_t my_handle;
+				esp_err_t err = nvs_open("storage", NVS_READWRITE, &my_handle);
+				if (err != ESP_OK) {
+					ESP_LOGE(TAG, "NVS open failed: %s", esp_err_to_name(err));
+					break;
+				}
+
+				// 写入二进制数据（key="custom_name"）
+				nvs_erase_key(my_handle, "custom_name"); // 清除旧类型
+				err = nvs_set_str(my_handle, "custom_name", name);
+				if (err != ESP_OK) {
+					ESP_LOGE(TAG, "NVS set_str failed: %s", esp_err_to_name(err));
+				} else {
+					// 提交更改（必须！）
+					err = nvs_commit(my_handle);
+					if (err != ESP_OK) {
+						ESP_LOGE(TAG, "NVS commit failed: %s", esp_err_to_name(err));
+					} else {
+						ESP_LOGI(TAG, "Data saved to NVS successfully");
+					}
+				}
+
+				uint8_t rsp[] = { RSP_SET_CUSTOM_NAME_OK };
+				esp_ble_gatts_send_indicate(gatts_if, param->write.conn_id,
+							    gatt_handle_table[IDX_CHAR_VAL_A], sizeof(rsp), rsp, false);
+
+				nvs_close(my_handle);
+
+				vTaskDelay(pdMS_TO_TICKS(1000));
+
+				//系统重启
+				esp_restart();
+			} break;
 			default:
 				ESP_LOGW(TAG, "unknown epd cmd %d", epd_cmd);
 				break;
 			}
-
 		} else if (param->write.handle == gatt_handle_table[IDX_CHAR_CFG_A] && param->write.len == 2) {
 			uint16_t descr_value = param->write.value[1] << 8 | param->write.value[0];
 			if (descr_value == 0x0001) {

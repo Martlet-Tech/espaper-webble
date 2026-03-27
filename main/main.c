@@ -48,7 +48,8 @@ static const char *TAG = "main";
 extern int display_show_last;
 extern int display_debug;
 extern int show_qr;
-
+extern char saved_custom_name[64];
+extern size_t custom_name_size;
 extern YEPD *gyepd; // global epd pointer, defined in bsp.c
 
 void bsp_gpio_initial(void);
@@ -85,8 +86,6 @@ void app_main(void)
 
 	init_spiffs();
 	display_mgr_init();
-
-	gatts_main();
 
 	/*ESP_LOGI(TAG, "yepd initial");
 	gyepd = yepd_find_by_name("YMS9841304-1248CIH-E5");
@@ -130,6 +129,25 @@ void app_main(void)
 	}
 #endif
 
+// nvs 读取 EPD 用户自定义广播 名称
+#if 1
+
+	err = nvs_open("storage", NVS_READONLY, &my_handle);
+	if (err == ESP_OK) {
+		// 注意：你在 CMD_SET_EPD_NAME 中使用的是 nvs_set_str
+		// 所以这里对应使用 nvs_get_str
+		err = nvs_get_str(my_handle, "custom_name", saved_custom_name, &custom_name_size);
+		if (err == ESP_OK) {
+			ESP_LOGI(TAG, "NVS found custom name: %s", saved_custom_name);
+		} else {
+			ESP_LOGI(TAG, "NVS key 'custom_name' not found, using default error code = %d", err);
+		}
+		nvs_close(my_handle);
+	} else {
+		ESP_LOGE(TAG, "NVS open failed: %s, using default", esp_err_to_name(err));
+	}
+#endif
+
 	//工作模式
 #if 1
 	// --- 续写部分：读取 Working Mode ---
@@ -170,6 +188,8 @@ void app_main(void)
 #endif
 	//gyepd->test();
 	//ESP_LOGI(TAG, "test finish");
+
+	gatts_main();
 
 	while (1) {
 		vTaskDelay(pdMS_TO_TICKS(1000));
