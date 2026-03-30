@@ -1,0 +1,3 @@
+[submodule "web_ble_epaper"]
+	path = web_ble_epaper
+	url = https://github.com/Martlet-Tech/web_ble_epaper.git
