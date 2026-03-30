@@ -87,6 +87,7 @@ typedef enum {
 	CMD_SET_WIFI = 0x08, //set wifi ssid and password, 0x08, ssid_len, ssid, pwd_len, pwd
 	CMD_SET_WORKING_MODE = 0x09, //show qrcode on image, 1byte, 0:off, 1:on
 	CMD_SET_CUSTOM_NAME = 0x0A, //set custom name, 0x0A, name_len, name
+	CMD_QUERY_PROGRESS = 0x0B, //query transfer progress
 } EPD_CMD;
 
 typedef enum {
@@ -535,6 +536,28 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
 				memcpy(rsp.attr_value.value, wifi_ip_address, ip_len);
 
 				ESP_LOGI(TAG, "Responding WiFi IP to web: %s", wifi_ip_address);
+
+				// 发送响应
+				esp_ble_gatts_send_response(gatts_if, param->read.conn_id, param->read.trans_id,
+							    ESP_GATT_OK, &rsp);
+			} break;
+			case CMD_QUERY_PROGRESS: {
+				// 准备响应数据
+				rsp.attr_value.handle = param->read.handle;
+
+				// 计算进度百分比
+				uint16_t progress = 0;
+				if (expected_total_size > 0) {
+					progress = (uint16_t)((received_bytes * 100) / expected_total_size);
+				}
+
+				// 格式：2 字节进度值 (大端)
+				rsp.attr_value.len = 2;
+				rsp.attr_value.value[0] = (progress >> 8) & 0xFF;
+				rsp.attr_value.value[1] = progress & 0xFF;
+
+				ESP_LOGI(TAG, "Query progress: %u%% (received: %ld / total: %ld)",
+					 progress, received_bytes, expected_total_size);
 
 				// 发送响应
 				esp_ble_gatts_send_response(gatts_if, param->read.conn_id, param->read.trans_id,
