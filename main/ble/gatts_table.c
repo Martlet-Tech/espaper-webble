@@ -72,8 +72,8 @@ YEPD *epd = NULL;
 
 #define DATA_CHUNK_SIZE 490 // 对应前端的 CHUNK_SIZE
 static uint8_t *ble_rx_buffer = NULL;
-static uint32_t expected_total_size = 0;
-static uint32_t received_bytes = 0;
+uint32_t expected_total_size = 0;
+uint32_t received_bytes = 0;
 
 typedef enum {
 	CMD_RESET_EPD = 0x00, //reset epd

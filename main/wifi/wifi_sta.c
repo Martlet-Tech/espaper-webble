@@ -20,6 +20,9 @@ bool g_wifi_needs_init = false;
 static const char *TAG = "WIFI_STA";
 char wifi_ip_address[16] = "0.0.0.0"; // 用于存储 IP 字符串
 
+extern uint32_t expected_total_size;
+extern uint32_t received_bytes;
+
 #define MAX_IMAGE_SIZE (800 * 1024)
 uint8_t *img_buffer = NULL; // 指向 PSRAM 的指针
 static httpd_handle_t server_handle = NULL; // 全局或静态变量，用于管理服务器
@@ -150,6 +153,10 @@ esp_err_t epd_data_post_handler(httpd_req_t *req)
 		return ESP_FAIL;
 	}
 
+	// 设置全局变量，供蓝牙查询进度使用
+	expected_total_size = total_len;
+	received_bytes = 0;
+
 	// 2. 循环读取数据流
 	while (cur_len < total_len) {
 		received = httpd_req_recv(req, (char *)img_buffer + cur_len, total_len - cur_len);
@@ -159,6 +166,7 @@ esp_err_t epd_data_post_handler(httpd_req_t *req)
 			return ESP_FAIL;
 		}
 		cur_len += received;
+		received_bytes = cur_len; // 更新全局变量
 
 		if (cur_len - last_log_progress > 51200) {
 			ESP_LOGI(TAG, "Progress: %d / %d bytes", cur_len, total_len);
