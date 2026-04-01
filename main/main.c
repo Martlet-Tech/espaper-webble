@@ -80,12 +80,6 @@ void app_main(void)
 	init_spiffs();
 	display_mgr_init();
 
-	/*ESP_LOGI(TAG, "yepd initial");
-	gyepd = yepd_find_by_name("YMS9841304-1248CIH-E5");
-	if (gyepd == NULL) {
-		ESP_LOGE(TAG, "yepd not found");
-	}*/
-
 	ESP_LOGI(TAG, "yepd initial from NVS");
 
 	char saved_epd_name[64] = { 0 }; // 假设名称不会超过64字节

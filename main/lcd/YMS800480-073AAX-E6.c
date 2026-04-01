@@ -41,14 +41,6 @@ static const char TAG[] = "E6-7.3";
 #define SDA_L gpio_set_level(IO_MOSI, 0)
 #define SDA_H gpio_set_level(IO_MOSI, 1)
 
-//#define BS 	P5OUT_bit.P5OUT1
-//#define BS_L gpio_set_level(IO_BS0, 0)
-//#define BS_H gpio_set_level(IO_BS0, 1)
-
-//#define Switch control  P6OUT_bit.P6OUT0
-#define SWC_L //TODO
-#define SWC_H //TODO
-
 //========= Input ==========
 // UC8154
 //#define SDA_IN  P4IN_bit.P4IN6
@@ -147,7 +139,7 @@ static void spi_9b_init(void)
 	//BS_H; //3
 	DC_L;
 	RSTN_H;
-	SWC_H;
+	
 	delay_ms(10);
 }
 
@@ -231,45 +223,6 @@ static void SPI_DATA(unsigned char dat)
 
 	//delay_us(1);
 }
-
-#if 0
-static void EPD_Display_Black()
-{
-	unsigned long i;
-
-	SPI_COMMAND(DTM);
-	for (i = 0; i < 192000; i++) {
-		if ((i % 1000) == 0) {
-			//esp_task_wdt_reset();
-			printf(".");
-			fflush(stdout);
-			//vPortYield();
-			delay_ms(1);
-		}
-
-		SPI_DATA(0x00);
-	}
-
-	SPI_COMMAND(PON);
-	check_busy_high();
-
-	//20211212
-	//Second setting
-	SPI_COMMAND(BTST2);
-	SPI_DATA(0x6F);
-	SPI_DATA(0x1F);
-	SPI_DATA(0x17);
-	SPI_DATA(0x49);
-
-	SPI_COMMAND(DRF);
-	SPI_DATA(0x00);
-	check_busy_high();
-
-	SPI_COMMAND(POF);
-	SPI_DATA(0x00);
-	check_busy_high();
-}
-#endif
 
 static void EPD_Init()
 {
