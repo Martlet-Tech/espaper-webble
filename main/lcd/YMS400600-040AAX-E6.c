@@ -442,18 +442,7 @@ static int display_index_buff(uint8_t *buff, size_t size)
 			delay_ms(1);
 		}
 
-		uint8_t high = (buff[i] >> 4) & 0x0F;
-		uint8_t low = buff[i] & 0x0F;
-
-		// 2. 核心修正逻辑：如果索引 >= 4，则需要加 1
-		if (high >= 4) {
-			high++;
-		}
-		if (low >= 4) {
-			low++;
-		}
-
-		SPI_DATA((high << 4) | (low & 0x0F));
+		SPI_DATA(remap_packed_byte(buff[i]));
 	}
 
 	YMS400600_040AAX_E6_update();
