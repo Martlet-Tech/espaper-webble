@@ -37,9 +37,6 @@ enum {
 
 extern char saved_custom_name[64];
 extern size_t custom_name_size;
-extern uint32_t expected_total_size;
-extern uint32_t received_bytes;
-
 void gatts_main(void);
 
 #endif

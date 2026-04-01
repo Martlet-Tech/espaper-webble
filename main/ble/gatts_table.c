@@ -40,11 +40,8 @@
 #include "esp_bt_device.h"
 #include "gatts_table.h"
 #include "esp_gatt_common_api.h"
-#include <yepd.h>
-#include <cJSON.h>
-#include "bsp.h"
 #include "wifi_sta.h"
-#include "display_manager.h"
+#include "ble_epd_proto.h"
 
 #define TAG "TAG_GATTS_TABLE"
 
@@ -67,41 +64,6 @@ size_t custom_name_size = sizeof(saved_custom_name);
 #define SCAN_RSP_CONFIG_FLAG (1 << 1)
 
 extern char wifi_ip_address[16];
-
-YEPD *epd = NULL;
-
-#define DATA_CHUNK_SIZE 490 // 对应前端的 CHUNK_SIZE
-static uint8_t *ble_rx_buffer = NULL;
-uint32_t expected_total_size = 0;
-uint32_t received_bytes = 0;
-
-typedef enum {
-	CMD_RESET_EPD = 0x00, //reset epd
-	CMD_SET_EPD_NAME = 0x01, //set epd name, 0x01, name_len, name
-	CMD_REPORT_EPD_INFO = 0x02, //report epd info at next read
-	CMD_START_WRITE_DATA = 0x03, //start to write data, 4byte means data len
-	CMD_CURRENT_PACKET_INDEX = 0x04, //current packet index and data
-	CMD_END_WRITE_DATA = 0x05, //end of write data
-	CMD_EPD_CLEAR = 0x06, //clear epd screen
-	CMD_BATTERY_LEVEL = 0x07, //battery level, 2byte 10mV per bit, 65535*10mV=655.35V Max
-	CMD_SET_WIFI = 0x08, //set wifi ssid and password, 0x08, ssid_len, ssid, pwd_len, pwd
-	CMD_SET_WORKING_MODE = 0x09, //show qrcode on image, 1byte, 0:off, 1:on
-	CMD_SET_CUSTOM_NAME = 0x0A, //set custom name, 0x0A, name_len, name
-	CMD_QUERY_PROGRESS = 0x0B, //query transfer progress
-} EPD_CMD;
-
-typedef enum {
-	WORKING_MODE_NORMAL = 0x00, //normal working mode
-	WORKING_MODE_ALBUM = 0x01, //album working mode
-} EPD_WORKING_MODE;
-
-typedef enum {
-	RSP_SET_NAME_OK = 0x81, // 成功 (0x80 | CMD_ID)
-	RSP_SET_CUSTOM_NAME_OK = 0x82, // 成功 (0x80 | CMD_ID)
-	RSP_SET_NAME_ERR = 0x8F, // 失败
-} EPD_RSP;
-
-static EPD_CMD epd_cmd;
 
 static uint8_t adv_config_done = 0;
 
@@ -303,8 +265,6 @@ static const esp_gatts_attr_db_t gatt_db[HRS_IDX_NB] = {
 
 };
 
-static void display_clear_task(void *pvParameter);
-
 static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
 {
 	switch (event) {
@@ -423,8 +383,6 @@ void example_exec_write_event_env(prepare_type_env_t *prepare_write_env, esp_ble
 static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_if,
 					esp_ble_gatts_cb_param_t *param)
 {
-	static uint32_t packet_index = 0;
-
 	switch (event) {
 	case ESP_GATTS_REG_EVT: {
 		esp_err_t set_dev_name_ret = esp_ble_gap_set_device_name(SAMPLE_DEVICE_NAME);
@@ -472,102 +430,8 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
 			 param->read.conn_id, param->read.trans_id, param->read.handle);
 
 		if (param->read.handle == gatt_handle_table[IDX_CHAR_VAL_D]) {
-			ESP_LOGI(TAG, "READ epd_cmd = %d", epd_cmd);
-			esp_gatt_rsp_t rsp;
-			memset(&rsp, 0, sizeof(esp_gatt_rsp_t));
-
-			switch (epd_cmd) {
-			case CMD_REPORT_EPD_INFO: {
-				cJSON *root = NULL;
-				size_t required_len = 0;
-				(void)nvs_config_get_blob(NVS_CFG_KEY_CONFIG_DATA, NULL,
-							  &required_len);
-
-				if (required_len == 0) {
-					ESP_LOGE(TAG, "config_data not found");
-				}
-
-				uint8_t *buffer = malloc(required_len + 1);
-				if (buffer) {
-					buffer[required_len] = '\0';
-					(void)nvs_config_get_blob(NVS_CFG_KEY_CONFIG_DATA,
-								  buffer, &required_len);
-					buffer[required_len] = '\0';
-				}
-
-				epd = buffer ? yepd_find_by_name((const char *)buffer) : NULL;
-
-				if (epd != NULL) {
-					ESP_LOGI(TAG, "read epd name %s", epd->name);
-					root = cJSON_CreateObject();
-					if (!root)
-						break;
-
-					cJSON_AddStringToObject(root, "name", epd->name);
-					cJSON_AddNumberToObject(root, "width", epd->width);
-					cJSON_AddNumberToObject(root, "height", epd->height);
-					cJSON_AddStringToObject(root, "palette", epd->palette);
-					cJSON_AddNumberToObject(root, "bpp", epd->bpp);
-					char *json_str = cJSON_PrintUnformatted(root);
-
-					rsp.attr_value.len = strlen(json_str);
-					rsp.attr_value.handle = param->read.handle;
-					rsp.attr_value.offset = param->read.offset;
-					rsp.attr_value.auth_req = ESP_GATT_AUTH_REQ_NONE;
-					memcpy(rsp.attr_value.value, json_str, rsp.attr_value.len);
-				} else {
-					ESP_LOGE(TAG, "invalid epd name %s", (const char *)param->write.value + 1);
-				}
-
-				esp_ble_gatts_send_response(gatts_if, param->read.conn_id, param->read.trans_id,
-							    ESP_GATT_OK, &rsp);
-
-				vTaskDelay(pdMS_TO_TICKS(1000));
-				if (root)
-					cJSON_Delete(root);
-				free(buffer);
-			} break;
-			case CMD_SET_WIFI: {
-				// 准备响应数据
-				rsp.attr_value.handle = param->read.handle;
-
-				// 将 IP 字符串拷贝到响应缓存中
-				// 网页端会收到类似 "192.168.1.5" 的数据
-				uint16_t ip_len = strlen(wifi_ip_address);
-				rsp.attr_value.len = ip_len;
-				memcpy(rsp.attr_value.value, wifi_ip_address, ip_len);
-
-				ESP_LOGI(TAG, "Responding WiFi IP to web: %s", wifi_ip_address);
-
-				// 发送响应
-				esp_ble_gatts_send_response(gatts_if, param->read.conn_id, param->read.trans_id,
-							    ESP_GATT_OK, &rsp);
-			} break;
-			case CMD_QUERY_PROGRESS: {
-				// 准备响应数据
-				rsp.attr_value.handle = param->read.handle;
-
-				// 计算进度百分比
-				uint16_t progress = 0;
-				if (expected_total_size > 0) {
-					progress = (uint16_t)((received_bytes * 100) / expected_total_size);
-				}
-
-				// 格式：2 字节进度值 (大端)
-				rsp.attr_value.len = 2;
-				rsp.attr_value.value[0] = (progress >> 8) & 0xFF;
-				rsp.attr_value.value[1] = progress & 0xFF;
-
-				ESP_LOGI(TAG, "Query progress: %u%% (received: %ld / total: %ld)",
-					 progress, received_bytes, expected_total_size);
-
-				// 发送响应
-				esp_ble_gatts_send_response(gatts_if, param->read.conn_id, param->read.trans_id,
-							    ESP_GATT_OK, &rsp);
-			} break;
-			default:
-				break;
-			}
+			ble_epd_proto_on_char_read(gatts_if, param->read.conn_id, param->read.trans_id,
+						   param->read.handle, param->read.offset);
 		}
 	} break;
 	case ESP_GATTS_WRITE_EVT: {
@@ -588,234 +452,8 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
 		}
 
 		if ((param->write.handle == gatt_handle_table[IDX_CHAR_VAL_E])) {
-			epd_cmd = param->write.value[0];
-			//ESP_LOGI(TAG, "epd_cmd = %d", epd_cmd);
-			switch (epd_cmd) {
-			case CMD_RESET_EPD: {
-				ESP_LOGI(TAG, "CMD_RESET_EPD");
-				vTaskDelay(pdMS_TO_TICKS(2000));
-				esp_restart();
-			} break;
-			case CMD_SET_EPD_NAME: {
-				ESP_LOGI(TAG, "CMD_SET_EPD_NAME");
-				epd = yepd_find_by_name((const char *)param->write.value + 1);
-				if (epd != NULL) {
-					ESP_LOGI(TAG, "set epd name %s", epd->name);
-
-					const uint8_t *data = param->write.value + 1;
-					size_t len = param->write.len - 1;
-
-					esp_err_t err =
-						nvs_config_set_blob(NVS_CFG_KEY_CONFIG_DATA, data, len);
-					if (err != ESP_OK) {
-						ESP_LOGE(TAG, "NVS set_blob failed: %s",
-							 esp_err_to_name(err));
-					} else {
-						ESP_LOGI(TAG, "Data saved to NVS successfully");
-					}
-
-					uint8_t rsp[] = { RSP_SET_NAME_OK };
-					esp_ble_gatts_send_indicate(gatts_if, param->write.conn_id,
-								    gatt_handle_table[IDX_CHAR_VAL_A], sizeof(rsp), rsp,
-								    false);
-
-					vTaskDelay(pdMS_TO_TICKS(1000));
-
-					//系统重启
-					esp_restart();
-				} else {
-					ESP_LOGE(TAG, "invalid epd name %s", (const char *)param->write.value + 1);
-					uint8_t rsp[] = { RSP_SET_NAME_ERR };
-					esp_err_t err = esp_ble_gatts_send_indicate(gatts_if, param->write.conn_id,
-										    gatt_handle_table[IDX_CHAR_VAL_A],
-										    sizeof(rsp), rsp, false);
-					if (err != ESP_OK) {
-						ESP_LOGE(TAG, "send indicate failed: %s", esp_err_to_name(err));
-					} else {
-						ESP_LOGI(TAG, "send indicate success");
-					}
-				}
-			} break;
-			case CMD_REPORT_EPD_INFO:
-				ESP_LOGI(TAG, "CMD_REPORT_EPD_INFO");
-				break;
-			case CMD_START_WRITE_DATA: {
-				ESP_LOGI(TAG, "CMD_START_WRITE_DATA");
-				packet_index = 0;
-
-				// 格式: 0x03 + 4字节总大小 (大端)
-				if (len >= 5) {
-					esp_pm_lock_acquire(s_pm_cpu_lock);
-					vTaskDelay(pdMS_TO_TICKS(50));
-
-					expected_total_size = (data[1] << 24) | (data[2] << 16) | (data[3] << 8) |
-							      data[4];
-					received_bytes = 0;
-
-					// 如果之前有没释放的内存，先释放
-					/*if (ble_rx_buffer) {
-						free(ble_rx_buffer);
-						ble_rx_buffer = NULL;
-					}*/
-
-					ble_rx_buffer = (uint8_t *)display_mgr_prepare_user_buffer(expected_total_size);
-					if (ble_rx_buffer == NULL) {
-						ESP_LOGE(TAG, "内存分配失败，大小: %ld", expected_total_size);
-					} else {
-						ESP_LOGI(TAG, "开始接收数据，预期总大小: %ld 字节",
-							 expected_total_size);
-					}
-				}
-			} break;
-			case CMD_CURRENT_PACKET_INDEX: {
-				packet_index++;
-				//ESP_LOGI(TAG, "CMD_CURRENT_PACKET_INDEX");
-				if (packet_index % 50 == 0) {
-					ESP_LOGI(TAG, "接收进度: %d", packet_index);
-				}
-
-				// 格式: 0x04 + 4字节包编号 + 490字节数据
-				if (ble_rx_buffer && len > 5) {
-					uint32_t packet_index = (data[1] << 24) | (data[2] << 16) | (data[3] << 8) |
-								data[4];
-					uint32_t offset = packet_index * DATA_CHUNK_SIZE;
-					uint16_t payload_len = len - 5;
-
-					// 安全检查：防止越界写入
-					if (offset + payload_len > expected_total_size) {
-						payload_len = expected_total_size - offset;
-						ESP_LOGW(TAG, "检测到尾部填充，已截断 payload 长度至: %ld",
-							 payload_len);
-					}
-
-					if (offset < expected_total_size) {
-						memcpy(ble_rx_buffer + offset, &data[5], payload_len);
-						received_bytes += payload_len;
-					}
-				}
-			} break;
-			case CMD_END_WRITE_DATA: {
-				ESP_LOGI(TAG, "CMD_END_WRITE_DATA");
-				ESP_LOGI(TAG, "数据传输完成。总接收: %ld / 预期: %ld", received_bytes,
-					 expected_total_size);
-
-				if (received_bytes == expected_total_size) {
-					// 创建任务来处理显示
-					display_mgr_trigger_user_refresh();
-				} else {
-					ESP_LOGE(TAG, "数据传输不完整，已接收: %ld / 预期: %ld", received_bytes,
-						 expected_total_size);
-				}
-
-				esp_pm_lock_release(s_pm_cpu_lock);
-			} break;
-			case CMD_EPD_CLEAR: {
-				ESP_LOGI(TAG, "CMD_EPD_CLEAR");
-				if (len > 1) {
-					ESP_LOGI(TAG, "clear with index %02x", data[1]);
-				}
-
-				uint8_t color_index = data[1];
-
-				// 创建任务来处理清除
-				xTaskCreate(display_clear_task, "clear_scr", 4096, (void *)(uintptr_t)color_index, 5,
-					    NULL);
-			} break;
-			case CMD_SET_WIFI: {
-				ESP_LOGI(TAG, "CMD_SET_WIFI");
-
-				// 新协议格式: [0]CMD, [1]SSID_LEN, [2]PWD_LEN, [3...]SSID, [... ]PWD
-				if (len < 3) {
-					ESP_LOGE(TAG, "WiFi Data too short (min 3 bytes)");
-					break;
-				}
-
-				uint8_t ssid_len = data[1];
-				uint8_t pwd_len = data[2];
-
-				// 安全检查：防止数据包长度不足导致的越界
-				if (len < (3 + ssid_len + pwd_len)) {
-					ESP_LOGE(TAG, "Invalid packet length: expected %d, got %d",
-						 (3 + ssid_len + pwd_len), len);
-					break;
-				}
-
-				// 解析 SSID
-				char ssid[33] = { 0 };
-				uint8_t actual_ssid_copy = (ssid_len > 32) ? 32 : ssid_len;
-				memcpy(ssid, &data[3], actual_ssid_copy); // 注意：从索引 3 开始
-
-				// 解析 Password
-				char pwd[65] = { 0 };
-				uint8_t actual_pwd_copy = (pwd_len > 64) ? 64 : pwd_len;
-				memcpy(pwd, &data[3 + ssid_len], actual_pwd_copy); // 起始位 = 3 + ssid实际长度
-
-				ESP_LOGI(TAG, "Received WiFi Config: SSID=[%s], PWD=[%s]", ssid, pwd);
-
-				esp_err_t err = nvs_config_set_wifi_sta(ssid, pwd);
-				if (err == ESP_OK) {
-					ESP_LOGI(TAG, "WiFi config saved to NVS");
-				} else {
-					ESP_LOGE(TAG, "WiFi NVS save failed: %s",
-						 esp_err_to_name(err));
-				}
-
-				// 2. 这里可以触发 WiFi 连接逻辑
-				//wifi_init_sta(ssid, pwd);
-				g_wifi_needs_init = true;
-
-			} break;
-			case CMD_SET_WORKING_MODE: {
-				ESP_LOGI(TAG, "CMD_SET_WORKING_MODE");
-				if (len > 1) {
-					uint8_t new_mode = data[1]; // 获取前端传来的 0 或 1
-					ESP_LOGI(TAG, "Attempting to set working mode to: %d", new_mode);
-
-					esp_err_t err =
-						nvs_config_set_u8(NVS_CFG_KEY_WORKING_MODE, new_mode);
-					if (err == ESP_OK) {
-						ESP_LOGI(TAG, "NVS working_mode updated successfully.");
-						ESP_LOGI(TAG, "Restarting system to apply new mode...");
-						vTaskDelay(pdMS_TO_TICKS(500));
-						esp_restart();
-					} else {
-						ESP_LOGE(TAG, "NVS working_mode update failed: %s",
-							 esp_err_to_name(err));
-					}
-				} else {
-					ESP_LOGW(TAG, "Invalid payload length for CMD_SET_WORKING_MODE");
-				}
-				break;
-			} break;
-			case CMD_SET_CUSTOM_NAME: {
-				ESP_LOGI(TAG, "CMD_SET_CUSTOM_NAME");
-				size_t len = param->write.len - 1;
-
-				char name[33] = { 0 };
-				memcpy(name, &data[1], len); // 注意：从索引 2 开始
-				ESP_LOGI(TAG, "Received custom name: %s, len = %d", name, len);
-
-				esp_err_t err = nvs_config_set_custom_name(name);
-				if (err != ESP_OK) {
-					ESP_LOGE(TAG, "NVS custom_name failed: %s",
-						 esp_err_to_name(err));
-				} else {
-					ESP_LOGI(TAG, "Data saved to NVS successfully");
-				}
-
-				uint8_t rsp[] = { RSP_SET_CUSTOM_NAME_OK };
-				esp_ble_gatts_send_indicate(gatts_if, param->write.conn_id,
-							    gatt_handle_table[IDX_CHAR_VAL_A], sizeof(rsp), rsp, false);
-
-				vTaskDelay(pdMS_TO_TICKS(1000));
-
-				//系统重启
-				esp_restart();
-			} break;
-			default:
-				ESP_LOGW(TAG, "unknown epd cmd %d", epd_cmd);
-				break;
-			}
+			ble_epd_proto_on_char_write(gatts_if, param->write.conn_id,
+						    gatt_handle_table[IDX_CHAR_VAL_A], data, len);
 		} else if (param->write.handle == gatt_handle_table[IDX_CHAR_CFG_A] && param->write.len == 2) {
 			uint16_t descr_value = param->write.value[1] << 8 | param->write.value[0];
 			if (descr_value == 0x0001) {
@@ -1023,18 +661,4 @@ void gatts_main(void)
 	if (local_mtu_ret) {
 		ESP_LOGE(TAG, "set local  MTU failed, error code = %x", local_mtu_ret);
 	}
-}
-
-static void display_clear_task(void *pvParameter)
-{
-	uint8_t color_index = (uint8_t)(uintptr_t)pvParameter;
-	ESP_LOGI(TAG, "clear with color index %02x", color_index);
-
-	if (epd && epd->clear) {
-		epd->clear(color_index);
-	} else {
-		ESP_LOGE(TAG, "epd->clear is NULL");
-	}
-
-	vTaskDelete(NULL);
 }

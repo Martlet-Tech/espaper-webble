@@ -7,6 +7,7 @@
 #include "esp_event.h"
 #include "esp_log.h"
 #include "nvs_config.h"
+#include "ble_epd_proto.h"
 #include "wifi_sta.h"
 
 #include <esp_http_server.h>
@@ -19,9 +20,6 @@ bool g_wifi_needs_init = false;
 
 static const char *TAG = "WIFI_STA";
 char wifi_ip_address[16] = "0.0.0.0"; // 用于存储 IP 字符串
-
-extern uint32_t expected_total_size;
-extern uint32_t received_bytes;
 
 #define MAX_IMAGE_SIZE (800 * 1024)
 uint8_t *img_buffer = NULL; // 指向 PSRAM 的指针

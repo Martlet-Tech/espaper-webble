@@ -13,6 +13,7 @@ idf_component_register(
 			${LCD_SOURCES}
 			"pmic/IST9201.c"
 			"ble/gatts_table.c"
+			"ble/ble_epd_proto.c"
 			"wifi/wifi_sta.c"
 			"display_manager.c"
 
