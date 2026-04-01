@@ -30,7 +30,7 @@
 #include "freertos/event_groups.h"
 #include "esp_system.h"
 #include "esp_log.h"
-#include "nvs_flash.h"
+#include "nvs_config.h"
 #include "esp_bt.h"
 #include "esp_wifi.h"
 
@@ -478,21 +478,24 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
 
 			switch (epd_cmd) {
 			case CMD_REPORT_EPD_INFO: {
-				// 从 NVS 读回数据
-				nvs_handle_t handle;
 				cJSON *root = NULL;
-				nvs_open("storage", NVS_READONLY, &handle);
 				size_t required_len = 0;
-				nvs_get_blob(handle, "config_data", NULL, &required_len);
+				(void)nvs_config_get_blob(NVS_CFG_KEY_CONFIG_DATA, NULL,
+							  &required_len);
 
-				if (required_len == 0)
+				if (required_len == 0) {
 					ESP_LOGE(TAG, "config_data not found");
+				}
 
 				uint8_t *buffer = malloc(required_len + 1);
-				buffer[required_len] = '\0'; // 确保字符串以 NULL 结尾
-				nvs_get_blob(handle, "config_data", buffer, &required_len);
+				if (buffer) {
+					buffer[required_len] = '\0';
+					(void)nvs_config_get_blob(NVS_CFG_KEY_CONFIG_DATA,
+								  buffer, &required_len);
+					buffer[required_len] = '\0';
+				}
 
-				epd = yepd_find_by_name((const char *)buffer);
+				epd = buffer ? yepd_find_by_name((const char *)buffer) : NULL;
 
 				if (epd != NULL) {
 					ESP_LOGI(TAG, "read epd name %s", epd->name);
@@ -523,7 +526,6 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
 				if (root)
 					cJSON_Delete(root);
 				free(buffer);
-				nvs_close(handle);
 			} break;
 			case CMD_SET_WIFI: {
 				// 准备响应数据
@@ -603,33 +605,19 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
 					const uint8_t *data = param->write.value + 1;
 					size_t len = param->write.len - 1;
 
-					nvs_handle_t my_handle;
-					esp_err_t err = nvs_open("storage", NVS_READWRITE, &my_handle);
+					esp_err_t err =
+						nvs_config_set_blob(NVS_CFG_KEY_CONFIG_DATA, data, len);
 					if (err != ESP_OK) {
-						ESP_LOGE(TAG, "NVS open failed: %s", esp_err_to_name(err));
-						break;
-					}
-
-					// 写入二进制数据（key="config_data"）
-					err = nvs_set_blob(my_handle, "config_data", data, len);
-					if (err != ESP_OK) {
-						ESP_LOGE(TAG, "NVS set_blob failed: %s", esp_err_to_name(err));
+						ESP_LOGE(TAG, "NVS set_blob failed: %s",
+							 esp_err_to_name(err));
 					} else {
-						// 提交更改（必须！）
-						err = nvs_commit(my_handle);
-						if (err != ESP_OK) {
-							ESP_LOGE(TAG, "NVS commit failed: %s", esp_err_to_name(err));
-						} else {
-							ESP_LOGI(TAG, "Data saved to NVS successfully");
-						}
+						ESP_LOGI(TAG, "Data saved to NVS successfully");
 					}
 
 					uint8_t rsp[] = { RSP_SET_NAME_OK };
 					esp_ble_gatts_send_indicate(gatts_if, param->write.conn_id,
 								    gatt_handle_table[IDX_CHAR_VAL_A], sizeof(rsp), rsp,
 								    false);
-
-					nvs_close(my_handle);
 
 					vTaskDelay(pdMS_TO_TICKS(1000));
 
@@ -764,17 +752,12 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
 
 				ESP_LOGI(TAG, "Received WiFi Config: SSID=[%s], PWD=[%s]", ssid, pwd);
 
-				// 1. 保存到 NVS
-				nvs_handle_t my_handle;
-				esp_err_t err = nvs_open("storage", NVS_READWRITE, &my_handle);
+				esp_err_t err = nvs_config_set_wifi_sta(ssid, pwd);
 				if (err == ESP_OK) {
-					nvs_set_str(my_handle, "wifi_ssid", ssid);
-					nvs_set_str(my_handle, "wifi_password", pwd);
-					nvs_commit(my_handle);
-					nvs_close(my_handle);
 					ESP_LOGI(TAG, "WiFi config saved to NVS");
 				} else {
-					ESP_LOGE(TAG, "Error opening NVS: %s", esp_err_to_name(err));
+					ESP_LOGE(TAG, "WiFi NVS save failed: %s",
+						 esp_err_to_name(err));
 				}
 
 				// 2. 这里可以触发 WiFi 连接逻辑
@@ -788,25 +771,16 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
 					uint8_t new_mode = data[1]; // 获取前端传来的 0 或 1
 					ESP_LOGI(TAG, "Attempting to set working mode to: %d", new_mode);
 
-					nvs_handle_t set_handle;
-					esp_err_t err = nvs_open("storage", NVS_READWRITE, &set_handle);
+					esp_err_t err =
+						nvs_config_set_u8(NVS_CFG_KEY_WORKING_MODE, new_mode);
 					if (err == ESP_OK) {
-						err = nvs_set_u8(set_handle, "working_mode", new_mode);
-						if (err == ESP_OK) {
-							err = nvs_commit(set_handle);
-							if (err == ESP_OK) {
-								ESP_LOGI(TAG, "NVS working_mode updated successfully.");
-							}
-						}
-						nvs_close(set_handle);
-
-						if (err == ESP_OK) {
-							ESP_LOGI(TAG, "Restarting system to apply new mode...");
-							vTaskDelay(pdMS_TO_TICKS(500)); // 留点时间打印日志
-							esp_restart();
-						}
+						ESP_LOGI(TAG, "NVS working_mode updated successfully.");
+						ESP_LOGI(TAG, "Restarting system to apply new mode...");
+						vTaskDelay(pdMS_TO_TICKS(500));
+						esp_restart();
 					} else {
-						ESP_LOGE(TAG, "Error opening NVS: %s", esp_err_to_name(err));
+						ESP_LOGE(TAG, "NVS working_mode update failed: %s",
+							 esp_err_to_name(err));
 					}
 				} else {
 					ESP_LOGW(TAG, "Invalid payload length for CMD_SET_WORKING_MODE");
@@ -821,33 +795,17 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
 				memcpy(name, &data[1], len); // 注意：从索引 2 开始
 				ESP_LOGI(TAG, "Received custom name: %s, len = %d", name, len);
 
-				nvs_handle_t my_handle;
-				esp_err_t err = nvs_open("storage", NVS_READWRITE, &my_handle);
+				esp_err_t err = nvs_config_set_custom_name(name);
 				if (err != ESP_OK) {
-					ESP_LOGE(TAG, "NVS open failed: %s", esp_err_to_name(err));
-					break;
-				}
-
-				// 写入二进制数据（key="custom_name"）
-				nvs_erase_key(my_handle, "custom_name"); // 清除旧类型
-				err = nvs_set_str(my_handle, "custom_name", name);
-				if (err != ESP_OK) {
-					ESP_LOGE(TAG, "NVS set_str failed: %s", esp_err_to_name(err));
+					ESP_LOGE(TAG, "NVS custom_name failed: %s",
+						 esp_err_to_name(err));
 				} else {
-					// 提交更改（必须！）
-					err = nvs_commit(my_handle);
-					if (err != ESP_OK) {
-						ESP_LOGE(TAG, "NVS commit failed: %s", esp_err_to_name(err));
-					} else {
-						ESP_LOGI(TAG, "Data saved to NVS successfully");
-					}
+					ESP_LOGI(TAG, "Data saved to NVS successfully");
 				}
 
 				uint8_t rsp[] = { RSP_SET_CUSTOM_NAME_OK };
 				esp_ble_gatts_send_indicate(gatts_if, param->write.conn_id,
 							    gatt_handle_table[IDX_CHAR_VAL_A], sizeof(rsp), rsp, false);
-
-				nvs_close(my_handle);
 
 				vTaskDelay(pdMS_TO_TICKS(1000));
 
@@ -1011,13 +969,7 @@ void gatts_main(void)
 {
 	esp_err_t ret;
 
-	/* Initialize NVS. */
-	ret = nvs_flash_init();
-	if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-		ESP_ERROR_CHECK(nvs_flash_erase());
-		ret = nvs_flash_init();
-	}
-	ESP_ERROR_CHECK(ret);
+	ESP_ERROR_CHECK(nvs_config_flash_init());
 
 	ESP_ERROR_CHECK(esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT));
 

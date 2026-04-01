@@ -2,6 +2,7 @@ file(GLOB LCD_SOURCES "lcd/*.c")
 
 idf_component_register(
 	SRCS 		"main.c"
+			"nvs_config.c"
 			"ugui/ugui.c"
 			"QRLib/qr_encode.c"
 			"utils.c"

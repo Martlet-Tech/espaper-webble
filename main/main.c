@@ -16,7 +16,7 @@
 #include "freertos/task.h"
 #include <errno.h>
 
-#include "nvs_flash.h"
+#include "nvs_config.h"
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_mac.h"
@@ -60,7 +60,6 @@ void process_config(const char *file_path);
 void app_main(void)
 {
 	ESP_LOGI(TAG, ">>>>>>>>>>>>>>>>>>Hello world!<<<<<<<<<<<<<<<<");
-	esp_err_t ret;
 
 	esp_pm_config_t pm_config = {
 		.max_freq_mhz = 160, // 建议 160MHz，比 240MHz 更省电且足以处理 BLE
@@ -76,13 +75,7 @@ void app_main(void)
 		esp_pm_lock_create(ESP_PM_CPU_FREQ_MAX, 0, "ble_high_perf", &s_pm_cpu_lock);
 	}
 
-	// Initialize NVS
-	ret = nvs_flash_init();
-	if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-		ESP_ERROR_CHECK(nvs_flash_erase());
-		ret = nvs_flash_init();
-	}
-	ESP_ERROR_CHECK(ret);
+	ESP_ERROR_CHECK(nvs_config_flash_init());
 
 	init_spiffs();
 	display_mgr_init();
@@ -95,29 +88,20 @@ void app_main(void)
 
 	ESP_LOGI(TAG, "yepd initial from NVS");
 
-	nvs_handle_t my_handle;
 	char saved_epd_name[64] = { 0 }; // 假设名称不会超过64字节
 	size_t required_size = sizeof(saved_epd_name);
 	// nvs 读取 EPD 名称
 #if 1
-	// 默认型号（防止 NVS 为空）
 	const char *default_epd_name = "YMS9841304-1248CIH-E5";
 
-	esp_err_t err = nvs_open("storage", NVS_READONLY, &my_handle);
+	esp_err_t err =
+		nvs_config_get_blob(NVS_CFG_KEY_CONFIG_DATA, saved_epd_name, &required_size);
 	if (err == ESP_OK) {
-		// 注意：你在 CMD_SET_EPD_NAME 中使用的是 nvs_set_blob
-		// 所以这里对应使用 nvs_get_blob
-		err = nvs_get_blob(my_handle, "config_data", saved_epd_name, &required_size);
-		if (err == ESP_OK) {
-			ESP_LOGI(TAG, "NVS found EPD name: %s", saved_epd_name);
-			gyepd = yepd_find_by_name(saved_epd_name);
-		} else {
-			ESP_LOGI(TAG, "NVS key 'config_data' not found, using default");
-			gyepd = yepd_find_by_name(default_epd_name);
-		}
-		nvs_close(my_handle);
+		ESP_LOGI(TAG, "NVS found EPD name: %s", saved_epd_name);
+		gyepd = yepd_find_by_name(saved_epd_name);
 	} else {
-		ESP_LOGE(TAG, "NVS open failed: %s, using default", esp_err_to_name(err));
+		ESP_LOGI(TAG, "NVS key 'config_data' not available (%s), using default",
+			 esp_err_to_name(err));
 		gyepd = yepd_find_by_name(default_epd_name);
 	}
 
@@ -132,58 +116,38 @@ void app_main(void)
 // nvs 读取 EPD 用户自定义广播 名称
 #if 1
 
-	err = nvs_open("storage", NVS_READONLY, &my_handle);
+	err = nvs_config_get_str(NVS_CFG_KEY_CUSTOM_NAME, saved_custom_name,
+				 &custom_name_size);
 	if (err == ESP_OK) {
-		// 注意：你在 CMD_SET_EPD_NAME 中使用的是 nvs_set_str
-		// 所以这里对应使用 nvs_get_str
-		err = nvs_get_str(my_handle, "custom_name", saved_custom_name, &custom_name_size);
-		if (err == ESP_OK) {
-			ESP_LOGI(TAG, "NVS found custom name: %s", saved_custom_name);
-		} else {
-			ESP_LOGI(TAG, "NVS key 'custom_name' not found, using default error code = %d", err);
-		}
-		nvs_close(my_handle);
+		ESP_LOGI(TAG, "NVS found custom name: %s", saved_custom_name);
 	} else {
-		ESP_LOGE(TAG, "NVS open failed: %s, using default", esp_err_to_name(err));
+		ESP_LOGI(TAG, "NVS key 'custom_name' not found (%s)", esp_err_to_name(err));
 	}
 #endif
 
 	//工作模式
 #if 1
 	// --- 续写部分：读取 Working Mode ---
-	uint8_t working_mode = 0; // 默认 0: 正常模式
-	err = nvs_open("storage", NVS_READWRITE, &my_handle); // 注意这里改用 READWRITE，因为没读到要写入
+	uint8_t working_mode = 0;
+	err = nvs_config_get_u8_or_set_default(NVS_CFG_KEY_WORKING_MODE, 0,
+					       &working_mode);
 	if (err == ESP_OK) {
-		err = nvs_get_u8(my_handle, "working_mode", &working_mode);
-		if (err == ESP_ERR_NVS_NOT_FOUND) {
-			// 如果没找到，写入默认值 0
-			working_mode = 0;
-			err = nvs_set_u8(my_handle, "working_mode", working_mode);
-			nvs_commit(my_handle);
-			ESP_LOGI(TAG, "NVS 'working_mode' not found, initialized to 0 (Normal)");
-		} else if (err == ESP_OK) {
-			ESP_LOGI(TAG, "NVS found working_mode: %d", working_mode);
-		}
-
-		// 根据读取到或初始化的 working_mode 执行分支
+		ESP_LOGI(TAG, "NVS working_mode: %d", working_mode);
 		switch (working_mode) {
 		case 0:
 			ESP_LOGI(TAG, ">>> 进入分支：0 - 正常模式(Normal Mode) <<<");
-			// TODO: 可以在这里调用初始化正常模式的函数
 			break;
 		case 1:
 			ESP_LOGI(TAG, ">>> 进入分支：1 - 相册模式(Album Mode) <<<");
-
 			xTaskCreate(album_mode_task, "album_mode_task", 8192, NULL, 5, NULL);
 			break;
 		default:
-			ESP_LOGW(TAG, "Unknown mode %d, falling back to Normal Mode", working_mode);
+			ESP_LOGW(TAG, "Unknown mode %d, falling back to Normal Mode",
+				 working_mode);
 			break;
 		}
-
-		nvs_close(my_handle); // 别忘了关闭
 	} else {
-		ESP_LOGE(TAG, "NVS open for working_mode failed: %s", esp_err_to_name(err));
+		ESP_LOGE(TAG, "NVS working_mode failed: %s", esp_err_to_name(err));
 	}
 #endif
 	//gyepd->test();

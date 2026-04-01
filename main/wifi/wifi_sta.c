@@ -6,7 +6,7 @@
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "esp_log.h"
-#include "nvs_flash.h"
+#include "nvs_config.h"
 #include "wifi_sta.h"
 
 #include <esp_http_server.h>
@@ -112,22 +112,15 @@ void wifi_init_sta(const char *ssid, const char *pass)
 
 void wifi_auto_reconnect(void)
 {
-	nvs_handle_t my_handle;
 	char ssid[33] = { 0 };
 	char pwd[65] = { 0 };
-	size_t size;
 
-	if (nvs_open("storage", NVS_READONLY, &my_handle) == ESP_OK) {
-		size = sizeof(ssid);
-		nvs_get_str(my_handle, "wifi_ssid", ssid, &size);
-		size = sizeof(pwd);
-		nvs_get_str(my_handle, "wifi_password", pwd, &size);
-		nvs_close(my_handle);
-
-		if (strlen(ssid) > 0) {
-			ESP_LOGI(TAG, "Found saved WiFi config, connecting...");
-			wifi_init_sta(ssid, pwd);
-		}
+	if (nvs_config_get_wifi_sta(ssid, sizeof(ssid), pwd, sizeof(pwd)) != ESP_OK) {
+		return;
+	}
+	if (strlen(ssid) > 0) {
+		ESP_LOGI(TAG, "Found saved WiFi config, connecting...");
+		wifi_init_sta(ssid, pwd);
 	}
 }
 
