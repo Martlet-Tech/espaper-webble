@@ -16,6 +16,9 @@
 #include <driver/spi_common.h>
 #include <driver/spi_master.h>
 #include <driver/gpio.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "soc/soc_caps.h"
 
 #include "YMS25601440-3150AAX-E6.h"
 #include "bsp.h"
@@ -24,7 +27,11 @@
 #include "img_proc.h"
 
 #include "IST9201.h"
-#include "arduino_wrapper.h"
+
+#ifndef LOW
+#define LOW 0
+#define HIGH 1
+#endif
 
 #define BLACK 0x00
 #define WHITE 0x11
@@ -134,6 +141,117 @@ static uint8_t *dst_frame_buffer; //store hgd processed frames (8 frames)
 
 static const int spiClk = 4000000; // 12 MHz
 
+#define EPD_SPI_HOST SPI2_HOST
+
+static spi_device_handle_t s_epd_spi_dev;
+static bool s_epd_spi_bus_inited;
+
+typedef enum {
+	EPD_GPIO_IN = 0,
+	EPD_GPIO_OUT,
+} epd_gpio_dir_t;
+
+static void epd_gpio_config(int pin, epd_gpio_dir_t dir)
+{
+	gpio_config_t io = { .pin_bit_mask = 1ULL << pin,
+			     .mode = (dir == EPD_GPIO_OUT) ? GPIO_MODE_OUTPUT :
+								    GPIO_MODE_INPUT,
+			     .pull_up_en = GPIO_PULLUP_DISABLE,
+			     .pull_down_en = GPIO_PULLDOWN_DISABLE,
+			     .intr_type = GPIO_INTR_DISABLE };
+	ESP_ERROR_CHECK(gpio_config(&io));
+}
+
+static void epd_spi_bus_ensure_init(int sclk, int miso, int mosi)
+{
+	if (s_epd_spi_bus_inited) {
+		return;
+	}
+	spi_bus_config_t buscfg = { .mosi_io_num = mosi,
+				    .miso_io_num = miso,
+				    .sclk_io_num = sclk,
+				    .quadwp_io_num = -1,
+				    .quadhd_io_num = -1,
+				    .max_transfer_sz = 4096 };
+	ESP_ERROR_CHECK(
+		spi_bus_initialize(EPD_SPI_HOST, &buscfg, SPI_DMA_CH_AUTO));
+	s_epd_spi_bus_inited = true;
+}
+
+static void epd_spi_remove_device(void)
+{
+	if (s_epd_spi_dev != NULL) {
+		spi_bus_remove_device(s_epd_spi_dev);
+		s_epd_spi_dev = NULL;
+	}
+}
+
+static void epd_spi_begin_transaction(uint32_t clock_hz, uint8_t bit_order_msb,
+				      uint8_t data_mode)
+{
+	epd_spi_remove_device();
+	spi_device_interface_config_t devcfg = {
+		.mode = data_mode,
+		.clock_speed_hz = (int)clock_hz,
+		.spics_io_num = -1,
+		.queue_size = 1,
+		.flags = (bit_order_msb == 0) ?
+				 (SPI_DEVICE_TXBIT_LSBFIRST |
+				  SPI_DEVICE_RXBIT_LSBFIRST) :
+				 0,
+		.input_delay_ns = 0,
+	};
+	ESP_ERROR_CHECK(
+		spi_bus_add_device(EPD_SPI_HOST, &devcfg, &s_epd_spi_dev));
+}
+
+static uint8_t epd_spi_transfer_u8(uint8_t data)
+{
+	spi_transaction_t t = {
+		.flags = SPI_TRANS_USE_RXDATA | SPI_TRANS_USE_TXDATA,
+		.length = 8,
+		.tx_data = { data },
+		.rx_data = { 0 },
+	};
+	if (spi_device_polling_transmit(s_epd_spi_dev, &t) != ESP_OK) {
+		return 0xFF;
+	}
+	return t.rx_data[0];
+}
+
+static void epd_spi_transfer_bytes(const uint8_t *tx, uint8_t *rx, size_t len)
+{
+	size_t max_chunk = SOC_SPI_MAXIMUM_BUFFER_SIZE;
+	size_t transferred = 0;
+	int chunk_cnt = 0;
+
+	while (len > 0) {
+		size_t chunk = (len > max_chunk) ? max_chunk : len;
+		spi_transaction_t t = {
+			.length = chunk * 8,
+			.tx_buffer = tx ? tx + transferred : NULL,
+			.rx_buffer = rx ? rx + transferred : NULL,
+		};
+		spi_device_transmit(s_epd_spi_dev, &t);
+		transferred += chunk;
+		len -= chunk;
+		if ((transferred % 1000) == 0) {
+			printf(".");
+			fflush(stdout);
+		}
+		chunk_cnt++;
+	}
+	if (chunk_cnt > 1) {
+		printf("\n");
+		fflush(stdout);
+	}
+}
+
+static void epd_spi_shutdown_device(void)
+{
+	epd_spi_remove_device();
+}
+
 typedef struct {
 	void (*DelayMs)(unsigned int delaytime);
 	void (*EPD_IO_Write_byte)(const unsigned char data);
@@ -166,53 +284,42 @@ void _EPD_IO_CS_Ctrl_All(unsigned int status);
 void _EPD_IO_Initialize(void)
 {
 	//!!
-	pinMode(BUSY_PIN, OUTPUT);
-	pinMode(RST_PIN, OUTPUT);
-	digitalWrite(BUSY_PIN, 0);
-	digitalWrite(RST_PIN, 0);
+	epd_gpio_config(BUSY_PIN, EPD_GPIO_OUT);
+	epd_gpio_config(RST_PIN, EPD_GPIO_OUT);
+	gpio_set_level(BUSY_PIN, 0);
+	gpio_set_level(RST_PIN, 0);
 
-	pinMode(EPD_CS_DS, OUTPUT);
-	//pinMode(EPD_CS_OE_N, OUTPUT);
-	pinMode(EPD_CS_STCP, OUTPUT);
-	pinMode(EPD_CS_SHCP, OUTPUT);
-	//pinMode(EPD_CS_MR_N, OUTPUT);
+	epd_gpio_config(EPD_CS_DS, EPD_GPIO_OUT);
+	epd_gpio_config(EPD_CS_STCP, EPD_GPIO_OUT);
+	epd_gpio_config(EPD_CS_SHCP, EPD_GPIO_OUT);
 
-	digitalWrite(EPD_CS_DS, 1);
-	//digitalWrite(EPD_CS_OE_N, 0);
-	digitalWrite(EPD_CS_STCP, 0);
-	digitalWrite(EPD_CS_SHCP, 0);
-	//digitalWrite(EPD_CS_MR_N, 1);
+	gpio_set_level(EPD_CS_DS, 1);
+	gpio_set_level(EPD_CS_STCP, 0);
+	gpio_set_level(EPD_CS_SHCP, 0);
 	_EPD_IO_CS_Ctrl_All(0);
 	//!!
 
-	//IO初始化-SPI
-	pinMode(BUSY_PIN, INPUT);
-	//!!pinMode(SPI_SCLK, INPUT);
-	//!!pinMode(SPI_MISO, INPUT);
-	//!!pinMode(SPI_MOSI, INPUT);
-	epd_spi.begin(SPI_SCLK, SPI_MISO, SPI_MOSI, -1); //SCLK, MISO, MOSI, SS
-	epd_spi.setHwCs(false);
-	//!!epd_spi.beginTransaction(SPISettings(spiClk, MSBFIRST, SPI_MODE0));
-	epd_spi.beginTransaction(spiClk, MSBFIRST, SPI_MODE0);
+	epd_gpio_config(BUSY_PIN, EPD_GPIO_IN);
+	epd_spi_bus_ensure_init(SPI_SCLK, SPI_MISO, SPI_MOSI);
+	/* MSB first, SPI mode 0 (CPOL=0, CPHA=0) */
+	epd_spi_begin_transaction((uint32_t)spiClk, 1, 0);
 
 	_EPD_IO_CS_Ctrl_All(0);
 }
 
 void _EPD_IO_Deinitialize(void)
 {
-	epd_spi.endTransaction();
-	epd_spi.end();
-	//TODO:释放资源、反初始化IO
+	epd_spi_shutdown_device();
 	_EPD_IO_CS_Ctrl_All(0);
-	pinMode(SPI_SCLK, OUTPUT);
-	pinMode(SPI_MISO, OUTPUT);
-	pinMode(SPI_MOSI, OUTPUT);
-	pinMode(BUSY_PIN, OUTPUT);
-	digitalWrite(SPI_SCLK, 0);
-	digitalWrite(SPI_MISO, 0);
-	digitalWrite(SPI_MOSI, 0);
-	digitalWrite(BUSY_PIN, 0);
-	digitalWrite(RST_PIN, 0);
+	epd_gpio_config(SPI_SCLK, EPD_GPIO_OUT);
+	epd_gpio_config(SPI_MISO, EPD_GPIO_OUT);
+	epd_gpio_config(SPI_MOSI, EPD_GPIO_OUT);
+	epd_gpio_config(BUSY_PIN, EPD_GPIO_OUT);
+	gpio_set_level(SPI_SCLK, 0);
+	gpio_set_level(SPI_MISO, 0);
+	gpio_set_level(SPI_MOSI, 0);
+	gpio_set_level(BUSY_PIN, 0);
+	gpio_set_level(RST_PIN, 0);
 }
 
 void _EPD_IO_Power_On(void)
@@ -227,7 +334,10 @@ void _EPD_IO_Power_Off(void)
 
 void _DelayMs(unsigned int delaytime)
 {
-	delay(delaytime);
+	if (delaytime == 0) {
+		return;
+	}
+	vTaskDelay(pdMS_TO_TICKS(delaytime));
 }
 
 void _EPD_IO_CS_Ctrl(unsigned int cs, unsigned int status)
@@ -237,47 +347,45 @@ void _EPD_IO_CS_Ctrl(unsigned int cs, unsigned int status)
 	// shift in
 	for (int i = 7; i >= 0; i--) {
 		if ((cs == i) && (status == LOW)) {
-			digitalWrite(EPD_CS_DS, LOW);
+			gpio_set_level(EPD_CS_DS, LOW);
 		} else {
-			digitalWrite(EPD_CS_DS, HIGH);
+			gpio_set_level(EPD_CS_DS, HIGH);
 		}
-		digitalWrite(EPD_CS_SHCP, HIGH);
-		digitalWrite(EPD_CS_SHCP, LOW);
+		gpio_set_level(EPD_CS_SHCP, HIGH);
+		gpio_set_level(EPD_CS_SHCP, LOW);
 	}
 
-	//level out
-	digitalWrite(EPD_CS_STCP, HIGH);
-	digitalWrite(EPD_CS_STCP, LOW);
+	gpio_set_level(EPD_CS_STCP, HIGH);
+	gpio_set_level(EPD_CS_STCP, LOW);
 	// DelayMs(1);
 }
 
 void _EPD_IO_CS_Ctrl_All(unsigned int status)
 {
 	for (int i = 7; i >= 0; i--) {
-		digitalWrite(EPD_CS_DS, status);
-		digitalWrite(EPD_CS_SHCP, HIGH);
-		digitalWrite(EPD_CS_SHCP, LOW);
+		gpio_set_level(EPD_CS_DS, status);
+		gpio_set_level(EPD_CS_SHCP, HIGH);
+		gpio_set_level(EPD_CS_SHCP, LOW);
 	}
-	digitalWrite(EPD_CS_STCP, HIGH);
-	digitalWrite(EPD_CS_STCP, LOW);
+	gpio_set_level(EPD_CS_STCP, HIGH);
+	gpio_set_level(EPD_CS_STCP, LOW);
 }
 
 void _EPD_IO_Write_byte(const unsigned char data)
 {
-	epd_spi.transferBytes(&data, NULL, 1);
+	epd_spi_transfer_bytes(&data, NULL, 1);
 }
 
 void _EPD_IO_WriteDataBytes(const unsigned char *data, unsigned int count)
 {
-	epd_spi.transferBytes(data, NULL, count);
+	epd_spi_transfer_bytes(data, NULL, count);
 }
 
 void _EPD_IO_ReadDataBytes(unsigned char *data, unsigned int count)
 {
 	for (int i = 0; i < count; i++) {
-		*data++ = epd_spi.transfer(0xFF);
+		*data++ = epd_spi_transfer_u8(0xFF);
 	}
-	// epd_spi.transferBytes(NULL, data, count);
 }
 
 /**
@@ -287,13 +395,13 @@ void _EPD_IO_ReadDataBytes(unsigned char *data, unsigned int count)
        */
 void _EPD_IO_Reset(void)
 {
-	digitalWrite(RST_PIN, LOW); //module reset
+	gpio_set_level(RST_PIN, LOW);
 	_DelayMs(50);
-	digitalWrite(RST_PIN, HIGH);
+	gpio_set_level(RST_PIN, HIGH);
 	_DelayMs(20);
-	digitalWrite(RST_PIN, LOW); //module reset
+	gpio_set_level(RST_PIN, LOW);
 	_DelayMs(50);
-	digitalWrite(RST_PIN, HIGH);
+	gpio_set_level(RST_PIN, HIGH);
 	_DelayMs(20);
 }
 
@@ -312,22 +420,20 @@ void _EPD_IO_ReadCommandData(const unsigned char cmd, unsigned char *data,
 	_EPD_IO_ReadDataBytes(data, data_length);
 }
 
-#define BUSY_CHECK_MAX_LOOP 60000
-
 /**
        *  @brief: Wait until the BUSY_PIN goes LOW
        */
 void _EPD_IO_CheckBusy_L(void)
 {
 	int loop_cnt = 0;
-	while (digitalRead(BUSY_PIN) == 1) { //1: busy, 0: idle
+	while (gpio_get_level(BUSY_PIN) == 1) { //1: busy, 0: idle
 		_DelayMs(1);
 		if ((loop_cnt % 100) == 0) {
 			printf("-");
 			fflush(stdout);
 		}
 		if ((loop_cnt++) > BUSY_CHECK_MAX_LOOP) {
-			Serial.println("ERROR: L BUSY CHECK Timeout!");
+			ESP_LOGW(TAG, "ERROR: L BUSY CHECK Timeout!");
 			break;
 		}
 	}
@@ -341,14 +447,14 @@ void _EPD_IO_CheckBusy_L(void)
 void _EPD_IO_CheckBusy_H(void)
 {
 	int loop_cnt = 0;
-	while (digitalRead(BUSY_PIN) == 0) { //0: busy, 1: idle
+	while (gpio_get_level(BUSY_PIN) == 0) { //0: busy, 1: idle
 		_DelayMs(10);
 		if ((loop_cnt % 100) == 0) {
 			printf("+");
 			fflush(stdout);
 		}
 		if ((loop_cnt++) > BUSY_CHECK_MAX_LOOP) {
-			Serial.println("ERROR: H BUSY CHECK Timeout!");
+			ESP_LOGW(TAG, "ERROR: H BUSY CHECK Timeout!");
 			break;
 		}
 	}
@@ -596,16 +702,16 @@ static unsigned char setEpdPower(void)
 	epd_io.EPD_IO_CS_Ctrl(0, HIGH);
 
 	if (readPwrBuf[4] == 0x00) {
-		Serial.printf("3-VCOM Data = 0x%02X \r\n", readPwrBuf[4]);
-		Serial.printf("Data NG! \r\n");
+		ESP_LOGI(TAG, "3-VCOM Data = 0x%02X", readPwrBuf[4]);
+		ESP_LOGI(TAG, "Data NG!");
 		vcomStatus = ERROR;
 	} else {
 		for (i = 0; i < 4; i++) {
 			if (readPwrBuf[i] > 120) {
 				vcomStatus = ERROR;
-				Serial.printf("4-PWM Data [%d] = 0x%02X \r\n",
-					      i, readPwrBuf[4]);
-				Serial.printf("Data NG! \r\n");
+				ESP_LOGI(TAG, "4-PWM Data [%d] = 0x%02X", i,
+					 readPwrBuf[4]);
+				ESP_LOGI(TAG, "Data NG!");
 			}
 		}
 
@@ -621,36 +727,36 @@ static unsigned char setEpdPower(void)
 
 static void EL315TW1_Update(void)
 {
-	Serial.println("Turn on Pmic");
+	ESP_LOGI(TAG, "Turn on Pmic");
 	ist9201.enablePmic();
 
-	Serial.println("PON");
+	ESP_LOGI(TAG, "PON");
 	epd_io.EPD_IO_CS_Ctrl_All(LOW);
 	epd_io.EPD_IO_Write_byte(PON);
 	epd_io.EPD_IO_CS_Ctrl_All(HIGH);
 	epd_io.EPD_IO_CheckBusy_H();
 
-	Serial.println("DRF");
+	ESP_LOGI(TAG, "DRF");
 	epd_io.EPD_IO_CS_Ctrl_All(LOW);
 	epd_io.DelayMs(10); //30ms
 	epd_io.EPD_IO_WriteCommandData(DRF, DRF_V, sizeof(DRF_V));
 	epd_io.EPD_IO_CS_Ctrl_All(HIGH);
 	epd_io.EPD_IO_CheckBusy_H();
 
-	Serial.println("POF");
+	ESP_LOGI(TAG, "POF");
 	epd_io.EPD_IO_CS_Ctrl_All(LOW);
 	epd_io.EPD_IO_WriteCommandData(POF, POF_V, sizeof(POF_V));
 	epd_io.EPD_IO_CS_Ctrl_All(HIGH);
 	epd_io.DelayMs(100);
 
-	Serial.println("Turn Off Pmic");
+	ESP_LOGI(TAG, "Turn Off Pmic");
 	ist9201.PowerOffPMIC();
 }
 
 static void _EL315TW1_DisplayFrame(unsigned char *frame_buffer)
 {
 	if (setEpdPower() == DONE) {
-		Serial.println("Sending Display Data....");
+		ESP_LOGI(TAG, "Sending Display Data....");
 		for (int i = 0; i < EPD_FRAME_COUNT; i++) {
 			epd_io.EPD_IO_CS_Ctrl(i, LOW);
 			epd_io.EPD_IO_Write_byte(DTM);
@@ -660,14 +766,14 @@ static void _EL315TW1_DisplayFrame(unsigned char *frame_buffer)
 			epd_io.DelayMs(1);
 			frame_buffer += EPD_FRAME_SIZE;
 		}
-		Serial.println("Done.");
+		ESP_LOGI(TAG, "Done.");
 
 		EL315TW1_Update();
 
-		Serial.println("Display Frame complete.");
+		ESP_LOGI(TAG, "Display Frame complete.");
 	} else {
-		Serial.println(
-			"Display Frame does not work due to setEpdPower() NG.");
+		ESP_LOGI(TAG,
+			 "Display Frame does not work due to setEpdPower() NG.");
 	}
 }
 
@@ -704,15 +810,14 @@ static int EL315TW1_CheckDriverICStatus(void)
 		epd_io.EPD_IO_CS_Ctrl(csx, LOW);
 		epd_io.EPD_IO_ReadCommandData(cmd, buf, sizeof(buf));
 		epd_io.EPD_IO_CS_Ctrl(csx, HIGH);
-		Serial.printf("Driver IC [%d] = 0x%02X 0x%02X 0x%02X \r\n", csx,
-			      buf[0], buf[1], buf[2]);
+		ESP_LOGI(TAG, "Driver IC [%d] = 0x%02X 0x%02X 0x%02X", csx,
+			 buf[0], buf[1], buf[2]);
 
 		if ((buf[0] & 0x01) == 0x01) {
-			Serial.printf("Driver IC [%d] is ready. \r\n", csx);
+			ESP_LOGI(TAG, "Driver IC [%d] is ready.", csx);
 			status |= DONE;
 		} else {
-			Serial.printf("Driver IC [%d] did not reply. \r\n",
-				      csx);
+			ESP_LOGI(TAG, "Driver IC [%d] did not reply.", csx);
 			status |= ERROR;
 		}
 	}
@@ -731,7 +836,7 @@ int EL315TW1_Init(void)
 	epd_io.EPD_IO_CheckBusy_H();
 
 	do {
-		delay(1000);
+		vTaskDelay(pdMS_TO_TICKS(1000));
 	} while (EL315TW1_CheckDriverICStatus() != DONE);
 
 	epd_io.EPD_IO_CS_Ctrl_All(LOW);
@@ -836,13 +941,13 @@ static int fill_index_buffer(uint8_t *inbuff)
 	}
 
 	epd.palette_index_to_EL315_data(inbuff, dst_frame_buffer);
-	Serial.println("EL315TW1 Data Packing Done.");
+	ESP_LOGI(TAG, "EL315TW1 Data Packing Done.");
 	epd.EL315TW1_DisplayFrame(dst_frame_buffer);
-	Serial.println("EL315TW1 Display Picture Done.");
+	ESP_LOGI(TAG, "EL315TW1 Display Picture Done.");
 	epd.EL315TW1_Sleep();
-	Serial.println("EL315TW1_Sleep Done.");
+	ESP_LOGI(TAG, "EL315TW1_Sleep Done.");
 	epd.EL315TW1_Deinit();
-	Serial.println("EL315TW1_Deinit Done.");
+	ESP_LOGI(TAG, "EL315TW1_Deinit Done.");
 
 	free(dst_frame_buffer);
 	//free(dst_image_buffer);

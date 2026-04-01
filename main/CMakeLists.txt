@@ -11,7 +11,6 @@ idf_component_register(
 			"img_proc/img_proc.c"
 			${LCD_SOURCES}
 			"pmic/IST9201.c"
-			"arduino_wrapper.c"
 			"ble/gatts_table.c"
 			"wifi/wifi_sta.c"
 			"display_manager.c"
