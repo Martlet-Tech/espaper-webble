@@ -252,23 +252,7 @@ static void EPD_W21_WriteCMD_ALL(unsigned char command)
 	EPD_W21_CS_M1_1;
 }
 
-static void EPD_W21_WriteCMD_ALL1(unsigned char command)
-{
-	//SPI_Delay(1);
-	EPD_W21_CS_M1_0;
-	//	EPD_W21_CS_S1_0;
-	//	EPD_W21_CS_M2_0;
-	EPD_W21_CS_S2_0;
-	//SPI_Delay(1);
-	EPD_W21_DC_0; // command write
-	//SPI_Delay(1);
-	SPI_Write(command);
-	//SPI_Delay(1);
-	EPD_W21_CS_S2_1;
-	//	EPD_W21_CS_M2_1;
-	//	EPD_W21_CS_S1_1;
-	EPD_W21_CS_M1_1;
-}
+
 
 static void EPD_W21_WriteDATA_ALL(unsigned char command)
 {
@@ -288,51 +272,11 @@ static void EPD_W21_WriteDATA_ALL(unsigned char command)
 	EPD_W21_CS_M1_1;
 }
 
-static void EPD_W21_WriteDATA_ALL1(unsigned char command)
-{
-	//SPI_Delay(1);
-	//	EPD_W21_CS_M1_0;
-	EPD_W21_CS_S1_0;
-	//	EPD_W21_CS_M2_0;
-	//	EPD_W21_CS_S2_0;
-	//SPI_Delay(1);
-	EPD_W21_DC_1; // command write
-	//SPI_Delay(1);
-	SPI_Write(command);
-	//SPI_Delay(1);
-	EPD_W21_CS_S2_1;
-	EPD_W21_CS_M2_1;
-	EPD_W21_CS_S1_1;
-	EPD_W21_CS_M1_1;
-}
 
-static void EPD_W21_WriteCMD_M1M2(unsigned char command)
-{
-	//SPI_Delay(1);
-	EPD_W21_CS_M1_0;
-	EPD_W21_CS_M2_0;
-	//SPI_Delay(1);
-	EPD_W21_DC_0; // command write
-	//SPI_Delay(1);
-	SPI_Write(command);
-	//SPI_Delay(1);
-	EPD_W21_CS_M1_1;
-	EPD_W21_CS_M2_1;
-}
 
-static void EPD_W21_WriteDATA_M1M2(unsigned char command)
-{
-	//SPI_Delay(1);
-	EPD_W21_CS_M1_0;
-	EPD_W21_CS_M2_0;
-	//SPI_Delay(1);
-	EPD_W21_DC_1; // command write
-	//SPI_Delay(1);
-	SPI_Write(command);
-	//SPI_Delay(1);
-	EPD_W21_CS_M1_1;
-	EPD_W21_CS_M2_1;
-}
+
+
+
 
 static void EPD_W21_WriteCMD_M2(unsigned char command)
 {
