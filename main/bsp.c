@@ -36,9 +36,6 @@
 #include "qr_encode.h"
 #include "cJSON.h"
 
-// 自定义头文件，确保它们不是重复的
-#include "ap.h"
-#include "http_server.h"
 #include "bsp.h"
 #include "img_proc.h"
 #include "utils.h"

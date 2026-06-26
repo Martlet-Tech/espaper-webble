@@ -901,6 +901,61 @@ int EL315TW1_Init(void)
 
 #endif
 
+// ── 打包 4-bit 输入 → 8 CS 帧缓冲 ────────────────────────────
+// 网页传来的 buff 是 4-bit 打包（2 像素/字节），水平排列。
+// EL315 硬件接收 8 个 CS 通道，各 400 像素宽（CS 3/7 仅 80 像素），
+// 垂直方向每两行打包为一字节：高4位=偶数行，低4位=奇数行。
+static void packed_to_EL315_frames(uint8_t *packed, uint8_t *dst)
+{
+	int w = 2560, h = 1440, half_w = w / 2;
+
+	static const int cs_x0[8] = { 0, 400, 800, 1200, 1280, 1680, 2080, 2480 };
+	static const int cs_x1[8] = { 400, 800, 1200, 1280, 1680, 2080, 2480, 2560 };
+
+	for (int cs = 0; cs < 8; cs++) {
+		int x0 = cs_x0[cs], x1 = cs_x1[cs], cw = x1 - x0, pad = 400 - cw;
+
+		for (int y = 0; y < h; y += 2) {
+			for (int x = x0; x < x1; x++) {
+				uint8_t pe = packed[x / 2 + y * half_w];
+				uint8_t po = packed[x / 2 + (y + 1) * half_w];
+				uint8_t pix_even = (x & 1) ? (pe & 0x0F) : ((pe >> 4) & 0x0F);
+				uint8_t pix_odd  = (x & 1) ? (po & 0x0F) : ((po >> 4) & 0x0F);
+				if (pix_even >= 4) pix_even++;
+				if (pix_odd  >= 4) pix_odd++;
+				*dst++ = (pix_even << 4) | pix_odd;
+			}
+			memset(dst, 0, pad);
+			dst += pad;
+		}
+	}
+}
+
+static int display_index_buff(uint8_t *buff, size_t size)
+{
+	ESP_LOGI(TAG, "display_index_buff size %d", size);
+
+	EL315TW1_Init();
+
+	dst_frame_buffer = (uint8_t *)heap_caps_malloc(EPD_FRAME_BUFFER_SIZE, MALLOC_CAP_SPIRAM);
+	if (dst_frame_buffer == NULL) {
+		ESP_LOGE(TAG, "dst_frame_buffer malloc fail");
+		return ESP_FAIL;
+	}
+
+	packed_to_EL315_frames(buff, dst_frame_buffer);
+
+	epd.EL315TW1_DisplayFrame(dst_frame_buffer);
+
+	free(dst_frame_buffer);
+	dst_frame_buffer = NULL;
+
+	_EPD_IO_Deinitialize();
+
+	ESP_LOGI(TAG, "display_index_buff end");
+	return 0;
+}
+
 static int initial(void)
 {
 	ESP_LOGI(TAG, "initial start");
@@ -964,7 +1019,18 @@ YEPD YMS25601440_3150AAX_E6 = {
 	.width = 2560,
 	.height = 1440,
 	.palette = "0,0,0;255,255,255;255,255,0;255,0,0;0,0,255;0,255,0",
+	.bpp = 4,
 	.init = initial,
 	.fill_index = fill_index_buffer,
 	.update = update_screen,
+	.display_index = display_index_buff,
+
+	.interface = YEPD_IF_SPI8S,
+	.pin_rst = 18,
+	.pin_busy = 8,
+	.pin_cs = { 0, 1, 2, 3, 4, 5, 6, 7 },
+	.pin_sck = 14,
+	.pin_dc = -1,
+	.pin_d = { 13, -1 },
+	.sections = { { .index_to_section = NULL } },
 };

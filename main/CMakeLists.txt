@@ -7,8 +7,8 @@ idf_component_register(
 			"QRLib/qr_encode.c"
 			"utils.c"
 			"bsp.c"
-			"net/ap.c"
-			"net/http_server.c"
+#			"net/ap.c"
+#			"net/http_server.c"
 			"img_proc/img_proc.c"
 			${LCD_SOURCES}
 			"pmic/IST9201.c"
@@ -19,7 +19,7 @@ idf_component_register(
 
         INCLUDE_DIRS 	"."
 			"lcd"
-			"net"
+#			"net"
 			"web"
 			"img_proc"
 			"ugui"
