@@ -39,6 +39,7 @@
 #include "gatts_table.h"
 #include "display_manager.h"
 #include "wifi_sta.h"
+#include "YMS25601440-3150AAX-E6.h"
 
 static const char *TAG = "main";
 
@@ -58,6 +59,7 @@ void app_main(void)
 {
 	ESP_LOGI(TAG, ">>>>>>>>>>>>>>>>>>Hello world!<<<<<<<<<<<<<<<<");
 
+#if 0
 	esp_pm_config_t pm_config = {
 		.max_freq_mhz = 160, // 建议 160MHz，比 240MHz 更省电且足以处理 BLE
 		.min_freq_mhz = 40, // 自动降频的下限（通常为 XTAL 频率）
@@ -66,6 +68,7 @@ void app_main(void)
 #endif
 	};
 	ESP_ERROR_CHECK(esp_pm_configure(&pm_config));
+#endif
 
 	// 创建锁（如果还没创建过）
 	if (s_pm_cpu_lock == NULL) {
@@ -126,10 +129,10 @@ void app_main(void)
 		ESP_LOGI(TAG, "NVS working_mode: %d", working_mode);
 		switch (working_mode) {
 		case 0:
-			ESP_LOGI(TAG, ">>> 进入分支：0 - 正常模式(Normal Mode) <<<");
+			ESP_LOGI(TAG, ">>> (Normal Mode) <<<");
 			break;
 		case 1:
-			ESP_LOGI(TAG, ">>> 进入分支：1 - 相册模式(Album Mode) <<<");
+			ESP_LOGI(TAG, ">>> (Album Mode) <<<");
 			xTaskCreate(album_mode_task, "album_mode_task", 8192, NULL, 5, NULL);
 			break;
 		default:
@@ -142,7 +145,8 @@ void app_main(void)
 	}
 #endif
 	//gyepd->test();
-	//ESP_LOGI(TAG, "test finish");
+	test_yms25601440_3150aax();
+	ESP_LOGI(TAG, "test finish");
 
 	gatts_main();
 

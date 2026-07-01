@@ -15,4 +15,6 @@
 #include "esp_attr.h"
 #include "yepd.h"
 
+void test_yms25601440_3150aax(void);
+
 #endif

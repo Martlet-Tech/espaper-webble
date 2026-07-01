@@ -10,6 +10,7 @@
 #include <sys/stat.h>
 #include <dirent.h>
 #include <unistd.h>
+#include "esp_timer.h"
 
 static const char *TAG = "DispMgr";
 
@@ -58,18 +59,24 @@ uint8_t *display_mgr_prepare_user_buffer(uint32_t size)
 // 核心刷新函数：所有刷屏请求最终都汇聚于此
 static void perform_hardware_display(uint8_t *data, uint32_t size, bool is_user_action)
 {
-	if (data == NULL || size == 0)
+	if (data == NULL || size == 0) {
+		ESP_LOGW(TAG, "perform_hardware_display: data=%p, size=%u, skip", data, size);
 		return;
+	}
 
 	// 1. 等待硬件空闲（如果正在刷屏，会在这里阻塞直到上一个 20s 结束）
-	ESP_LOGI(TAG, "等待硬件锁...");
+	ESP_LOGI(TAG, "等待硬件锁... (is_user=%d)", is_user_action);
+	int64_t t_wait = esp_timer_get_time();
 	if (xSemaphoreTake(xHardwareMutex, portMAX_DELAY) == pdTRUE) {
-		ESP_LOGI(TAG, ">>> 开始刷新硬件 (%s)...", is_user_action ? "用户上传" : "相册模式");
+		t_wait = (esp_timer_get_time() - t_wait) / 1000;
+		ESP_LOGI(TAG, ">>> 开始刷新硬件 (%s), 等了 %lld ms...", is_user_action ? "用户上传" : "相册模式", t_wait);
 
 		// 执行实际的刷新（假设该函数阻塞 20s）
+		int64_t t0 = esp_timer_get_time();
 		gyepd->display_index(data, size);
+		int64_t elapsed = (esp_timer_get_time() - t0) / 1000;
 
-		ESP_LOGI(TAG, "<<< 刷新硬件完成");
+		ESP_LOGI(TAG, "<<< 刷新硬件完成, 耗时 %lld ms", elapsed);
 
 		if (is_user_action) {
 			// 如果是用户操作，更新时间戳，强制后续轮播避让 2 分钟
@@ -77,6 +84,8 @@ static void perform_hardware_display(uint8_t *data, uint32_t size, bool is_user_
 		}
 
 		xSemaphoreGive(xHardwareMutex);
+	} else {
+		ESP_LOGE(TAG, "取硬件锁失败!");
 	}
 }
 

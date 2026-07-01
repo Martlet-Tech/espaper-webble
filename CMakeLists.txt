@@ -6,4 +6,4 @@ include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 #set(PARTITION_TABLE_CSV "${CMAKE_SOURCE_DIR}/partitions.csv")
 project(YEPD)
 
-spiffs_create_partition_image(storage ${CMAKE_SOURCE_DIR}/main/web FLASH_IN_PROJECT)
+spiffs_create_partition_image(storage ${CMAKE_SOURCE_DIR}/main/web)

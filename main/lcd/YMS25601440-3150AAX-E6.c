@@ -16,6 +16,7 @@
 #include <driver/spi_common.h>
 #include <driver/spi_master.h>
 #include <driver/gpio.h>
+#include <driver/i2c.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "soc/soc_caps.h"
@@ -141,7 +142,7 @@ static uint8_t *dst_frame_buffer; //store hgd processed frames (8 frames)
 
 static const int spiClk = 4000000; // 12 MHz
 
-#define EPD_SPI_HOST SPI2_HOST
+#define EPD_SPI_HOST SPI3_HOST
 
 static spi_device_handle_t s_epd_spi_dev;
 static bool s_epd_spi_bus_inited;
@@ -154,8 +155,7 @@ typedef enum {
 static void epd_gpio_config(int pin, epd_gpio_dir_t dir)
 {
 	gpio_config_t io = { .pin_bit_mask = 1ULL << pin,
-			     .mode = (dir == EPD_GPIO_OUT) ? GPIO_MODE_OUTPUT :
-								    GPIO_MODE_INPUT,
+			     .mode = (dir == EPD_GPIO_OUT) ? GPIO_MODE_OUTPUT : GPIO_MODE_INPUT,
 			     .pull_up_en = GPIO_PULLUP_DISABLE,
 			     .pull_down_en = GPIO_PULLDOWN_DISABLE,
 			     .intr_type = GPIO_INTR_DISABLE };
@@ -173,8 +173,7 @@ static void epd_spi_bus_ensure_init(int sclk, int miso, int mosi)
 				    .quadwp_io_num = -1,
 				    .quadhd_io_num = -1,
 				    .max_transfer_sz = 4096 };
-	ESP_ERROR_CHECK(
-		spi_bus_initialize(EPD_SPI_HOST, &buscfg, SPI_DMA_CH_AUTO));
+	ESP_ERROR_CHECK(spi_bus_initialize(EPD_SPI_HOST, &buscfg, SPI_DMA_CH_AUTO));
 	s_epd_spi_bus_inited = true;
 }
 
@@ -186,8 +185,7 @@ static void epd_spi_remove_device(void)
 	}
 }
 
-static void epd_spi_begin_transaction(uint32_t clock_hz, uint8_t bit_order_msb,
-				      uint8_t data_mode)
+static void epd_spi_begin_transaction(uint32_t clock_hz, uint8_t bit_order_msb, uint8_t data_mode)
 {
 	epd_spi_remove_device();
 	spi_device_interface_config_t devcfg = {
@@ -195,14 +193,10 @@ static void epd_spi_begin_transaction(uint32_t clock_hz, uint8_t bit_order_msb,
 		.clock_speed_hz = (int)clock_hz,
 		.spics_io_num = -1,
 		.queue_size = 1,
-		.flags = (bit_order_msb == 0) ?
-				 (SPI_DEVICE_TXBIT_LSBFIRST |
-				  SPI_DEVICE_RXBIT_LSBFIRST) :
-				 0,
+		.flags = (bit_order_msb == 0) ? (SPI_DEVICE_TXBIT_LSBFIRST | SPI_DEVICE_RXBIT_LSBFIRST) : 0,
 		.input_delay_ns = 0,
 	};
-	ESP_ERROR_CHECK(
-		spi_bus_add_device(EPD_SPI_HOST, &devcfg, &s_epd_spi_dev));
+	ESP_ERROR_CHECK(spi_bus_add_device(EPD_SPI_HOST, &devcfg, &s_epd_spi_dev));
 }
 
 static uint8_t epd_spi_transfer_u8(uint8_t data)
@@ -224,6 +218,7 @@ static void epd_spi_transfer_bytes(const uint8_t *tx, uint8_t *rx, size_t len)
 	size_t max_chunk = SOC_SPI_MAXIMUM_BUFFER_SIZE;
 	size_t transferred = 0;
 	int chunk_cnt = 0;
+	size_t total = len;
 
 	while (len > 0) {
 		size_t chunk = (len > max_chunk) ? max_chunk : len;
@@ -235,14 +230,14 @@ static void epd_spi_transfer_bytes(const uint8_t *tx, uint8_t *rx, size_t len)
 		spi_device_transmit(s_epd_spi_dev, &t);
 		transferred += chunk;
 		len -= chunk;
-		if ((transferred % 1000) == 0) {
+		if ((transferred % 40000) == 0) {
 			printf(".");
 			fflush(stdout);
 		}
 		chunk_cnt++;
 	}
 	if (chunk_cnt > 1) {
-		printf("\n");
+		printf(" [%d chunks]\n", chunk_cnt);
 		fflush(stdout);
 	}
 }
@@ -250,13 +245,16 @@ static void epd_spi_transfer_bytes(const uint8_t *tx, uint8_t *rx, size_t len)
 static void epd_spi_shutdown_device(void)
 {
 	epd_spi_remove_device();
+	if (s_epd_spi_bus_inited) {
+		spi_bus_free(EPD_SPI_HOST);
+		s_epd_spi_bus_inited = false;
+	}
 }
 
 typedef struct {
 	void (*DelayMs)(unsigned int delaytime);
 	void (*EPD_IO_Write_byte)(const unsigned char data);
-	void (*EPD_IO_WriteDataBytes)(const unsigned char *data,
-				      unsigned int count);
+	void (*EPD_IO_WriteDataBytes)(const unsigned char *data, unsigned int count);
 	void (*EPD_IO_ReadDataBytes)(unsigned char *data, unsigned int count);
 
 	void (*EPD_IO_Initialize)(void);
@@ -269,12 +267,8 @@ typedef struct {
 	// void EPD_IO_CS_S_Ctrl(unsigned int status);
 	void (*EPD_IO_CS_Ctrl)(unsigned int cs, unsigned int on);
 	void (*EPD_IO_CS_Ctrl_All)(unsigned int on);
-	void (*EPD_IO_WriteCommandData)(const unsigned char cmd,
-					const unsigned char *data,
-					unsigned int data_length);
-	void (*EPD_IO_ReadCommandData)(const unsigned char cmd,
-				       unsigned char *data,
-				       unsigned int data_length);
+	void (*EPD_IO_WriteCommandData)(const unsigned char cmd, const unsigned char *data, unsigned int data_length);
+	void (*EPD_IO_ReadCommandData)(const unsigned char cmd, unsigned char *data, unsigned int data_length);
 	void (*EPD_IO_CheckBusy_L)(void);
 	void (*EPD_IO_CheckBusy_H)(void);
 } EPD_IO;
@@ -283,10 +277,7 @@ void _EPD_IO_CS_Ctrl_All(unsigned int status);
 
 void _EPD_IO_Initialize(void)
 {
-	//!!
-	epd_gpio_config(BUSY_PIN, EPD_GPIO_OUT);
 	epd_gpio_config(RST_PIN, EPD_GPIO_OUT);
-	gpio_set_level(BUSY_PIN, 0);
 	gpio_set_level(RST_PIN, 0);
 
 	epd_gpio_config(EPD_CS_DS, EPD_GPIO_OUT);
@@ -297,14 +288,15 @@ void _EPD_IO_Initialize(void)
 	gpio_set_level(EPD_CS_STCP, 0);
 	gpio_set_level(EPD_CS_SHCP, 0);
 	_EPD_IO_CS_Ctrl_All(0);
-	//!!
 
 	epd_gpio_config(BUSY_PIN, EPD_GPIO_IN);
+	ESP_LOGI(TAG, "_Initialize: after gpio config, BUSY_PIN=%d", gpio_get_level(BUSY_PIN));
 	epd_spi_bus_ensure_init(SPI_SCLK, SPI_MISO, SPI_MOSI);
 	/* MSB first, SPI mode 0 (CPOL=0, CPHA=0) */
 	epd_spi_begin_transaction((uint32_t)spiClk, 1, 0);
 
 	_EPD_IO_CS_Ctrl_All(0);
+	ESP_LOGI(TAG, "_Initialize: done, BUSY_PIN=%d", gpio_get_level(BUSY_PIN));
 }
 
 void _EPD_IO_Deinitialize(void)
@@ -320,6 +312,12 @@ void _EPD_IO_Deinitialize(void)
 	gpio_set_level(SPI_MOSI, 0);
 	gpio_set_level(BUSY_PIN, 0);
 	gpio_set_level(RST_PIN, 0);
+	/* set 595 control pins to input/pulldown to avoid back-powering unpowered 74HC595 */
+	epd_gpio_config(EPD_CS_DS, EPD_GPIO_IN);
+	epd_gpio_config(EPD_CS_STCP, EPD_GPIO_IN);
+	epd_gpio_config(EPD_CS_SHCP, EPD_GPIO_IN);
+	ist9201.IfDeinit();
+	ESP_LOGI(TAG, "_Deinitialize: PMIC powered off");
 }
 
 void _EPD_IO_Power_On(void)
@@ -345,6 +343,7 @@ void _EPD_IO_CS_Ctrl(unsigned int cs, unsigned int status)
 	// digitalWrite(cs_pins[cs], status);
 	//74HC595 controls cs pins
 	// shift in
+	ESP_LOGV(TAG, "CS_Ctrl: cs=%d, status=%s", cs, status ? "HIGH" : "LOW");
 	for (int i = 7; i >= 0; i--) {
 		if ((cs == i) && (status == LOW)) {
 			gpio_set_level(EPD_CS_DS, LOW);
@@ -405,16 +404,13 @@ void _EPD_IO_Reset(void)
 	_DelayMs(20);
 }
 
-void _EPD_IO_WriteCommandData(const unsigned char cmd,
-			      const unsigned char *data,
-			      unsigned int data_length)
+void _EPD_IO_WriteCommandData(const unsigned char cmd, const unsigned char *data, unsigned int data_length)
 {
 	_EPD_IO_Write_byte(cmd);
 	_EPD_IO_WriteDataBytes(data, data_length);
 }
 
-void _EPD_IO_ReadCommandData(const unsigned char cmd, unsigned char *data,
-			     unsigned int data_length)
+void _EPD_IO_ReadCommandData(const unsigned char cmd, unsigned char *data, unsigned int data_length)
 {
 	_EPD_IO_Write_byte(cmd);
 	_EPD_IO_ReadDataBytes(data, data_length);
@@ -426,6 +422,7 @@ void _EPD_IO_ReadCommandData(const unsigned char cmd, unsigned char *data,
 void _EPD_IO_CheckBusy_L(void)
 {
 	int loop_cnt = 0;
+	ESP_LOGI(TAG, "CheckBusy_L: enter, BUSY_PIN=%d", gpio_get_level(BUSY_PIN));
 	while (gpio_get_level(BUSY_PIN) == 1) { //1: busy, 0: idle
 		_DelayMs(1);
 		if ((loop_cnt % 100) == 0) {
@@ -433,12 +430,14 @@ void _EPD_IO_CheckBusy_L(void)
 			fflush(stdout);
 		}
 		if ((loop_cnt++) > BUSY_CHECK_MAX_LOOP) {
-			ESP_LOGW(TAG, "ERROR: L BUSY CHECK Timeout!");
+			ESP_LOGW(TAG, "CheckBusy_L: timeout after %d ms, BUSY_PIN=%d", loop_cnt,
+				 gpio_get_level(BUSY_PIN));
 			break;
 		}
 	}
 	printf("\n");
 	fflush(stdout);
+	ESP_LOGI(TAG, "CheckBusy_L: exit, waited ~%d ms", loop_cnt);
 }
 
 /**
@@ -447,6 +446,7 @@ void _EPD_IO_CheckBusy_L(void)
 void _EPD_IO_CheckBusy_H(void)
 {
 	int loop_cnt = 0;
+	ESP_LOGI(TAG, "CheckBusy_H: enter, BUSY_PIN=%d", gpio_get_level(BUSY_PIN));
 	while (gpio_get_level(BUSY_PIN) == 0) { //0: busy, 1: idle
 		_DelayMs(10);
 		if ((loop_cnt % 100) == 0) {
@@ -454,12 +454,14 @@ void _EPD_IO_CheckBusy_H(void)
 			fflush(stdout);
 		}
 		if ((loop_cnt++) > BUSY_CHECK_MAX_LOOP) {
-			ESP_LOGW(TAG, "ERROR: H BUSY CHECK Timeout!");
+			ESP_LOGW(TAG, "CheckBusy_H: timeout after %d ms, BUSY_PIN=%d", loop_cnt * 10,
+				 gpio_get_level(BUSY_PIN));
 			break;
 		}
 	}
 	printf("\n");
 	fflush(stdout);
+	ESP_LOGI(TAG, "CheckBusy_H: exit, waited ~%d ms", loop_cnt * 10);
 }
 
 static EPD_IO epd_io = {
@@ -498,30 +500,22 @@ typedef struct {
 	void (*EL315TW1_SetPwrToPmic)(unsigned char *pmicData);
 	unsigned char (*setEpdPower)(void);
 	void (*EL315TW1_TestFunc)(void);
-	void (*EL315TW1_DisplayColor)(unsigned char color,
-				      unsigned char *frame_buffer);
+	void (*EL315TW1_DisplayColor)(unsigned char color, unsigned char *frame_buffer);
 	void (*EL315TW1_DisplayColorBar)(unsigned char *frame_buffer);
-	void (*palette_index_to_EL315_data)(uint8_t *index_buffer,
-					    uint8_t *dst);
-	void (*palette_index_to_EL315_Sub_data)(uint8_t *index_buffer,
-						uint8_t *dst, int width,
-						int height);
+	void (*palette_index_to_EL315_data)(uint8_t *index_buffer, uint8_t *dst);
+	void (*palette_index_to_EL315_Sub_data)(uint8_t *index_buffer, uint8_t *dst, int width, int height);
 	void (*EL315TW1_InitPartialUpdateState)(void);
-	int (*EL315TW1_SetDisplayAreaForSub)(
-		int csx, int x, int y, int width,
-		int height); //(x+width <=400), (y+height <= 1440)
-	int (*EL315TW1_SendPartialDisplayDataForFub)(uint8_t *data,
-						     int data_length);
+	int (*EL315TW1_SetDisplayAreaForSub)(int csx, int x, int y, int width,
+					     int height); //(x+width <=400), (y+height <= 1440)
+	int (*EL315TW1_SendPartialDisplayDataForFub)(uint8_t *data, int data_length);
 	void (*EL315TW1_PartialUpdate)(void);
-	char (*partialWindowUpdateWithImageData)(
-		unsigned char csx, unsigned char const *imageData,
-		unsigned long imageDataLength, unsigned int xStart,
-		unsigned int yStart, unsigned int xPixel, unsigned int yLine,
-		unsigned char epdDisplayEnable);
-	char (*partialWindowUpdateWithoutImageData)(
-		unsigned char csx, unsigned int xStart, unsigned int yStart,
-		unsigned int xPixel, unsigned int yLine,
-		unsigned char epdDisplayEnable);
+	char (*partialWindowUpdateWithImageData)(unsigned char csx, unsigned char const *imageData,
+						 unsigned long imageDataLength, unsigned int xStart,
+						 unsigned int yStart, unsigned int xPixel, unsigned int yLine,
+						 unsigned char epdDisplayEnable);
+	char (*partialWindowUpdateWithoutImageData)(unsigned char csx, unsigned int xStart, unsigned int yStart,
+						    unsigned int xPixel, unsigned int yLine,
+						    unsigned char epdDisplayEnable);
 
 } EL315TW1;
 
@@ -533,8 +527,7 @@ static void _palette_index_to_EL315_data(uint8_t *index_buffer, uint8_t *dst)
 	for (int j = 0; j < EPD_HEIGHT; j += 2) {
 		for (int i = 0; i < 400; i++) {
 			uint8_t even_byte = index_buffer[i + j * EPD_WIDTH];
-			uint8_t odd_byte =
-				index_buffer[i + (j + 1) * EPD_WIDTH];
+			uint8_t odd_byte = index_buffer[i + (j + 1) * EPD_WIDTH];
 			if (even_byte >= 4)
 				even_byte += 1;
 			if (odd_byte >= 4)
@@ -546,8 +539,7 @@ static void _palette_index_to_EL315_data(uint8_t *index_buffer, uint8_t *dst)
 	for (int j = 0; j < EPD_HEIGHT; j += 2) {
 		for (int i = 400; i < 800; i++) {
 			uint8_t even_byte = index_buffer[i + j * EPD_WIDTH];
-			uint8_t odd_byte =
-				index_buffer[i + (j + 1) * EPD_WIDTH];
+			uint8_t odd_byte = index_buffer[i + (j + 1) * EPD_WIDTH];
 			if (even_byte >= 4)
 				even_byte += 1;
 			if (odd_byte >= 4)
@@ -559,8 +551,7 @@ static void _palette_index_to_EL315_data(uint8_t *index_buffer, uint8_t *dst)
 	for (int j = 0; j < EPD_HEIGHT; j += 2) {
 		for (int i = 800; i < 1200; i++) {
 			uint8_t even_byte = index_buffer[i + j * EPD_WIDTH];
-			uint8_t odd_byte =
-				index_buffer[i + (j + 1) * EPD_WIDTH];
+			uint8_t odd_byte = index_buffer[i + (j + 1) * EPD_WIDTH];
 			if (even_byte >= 4)
 				even_byte += 1;
 			if (odd_byte >= 4)
@@ -572,8 +563,7 @@ static void _palette_index_to_EL315_data(uint8_t *index_buffer, uint8_t *dst)
 	for (int j = 0; j < EPD_HEIGHT; j += 2) {
 		for (int i = 1200; i < 1280; i++) {
 			uint8_t even_byte = index_buffer[i + j * EPD_WIDTH];
-			uint8_t odd_byte =
-				index_buffer[i + (j + 1) * EPD_WIDTH];
+			uint8_t odd_byte = index_buffer[i + (j + 1) * EPD_WIDTH];
 			if (even_byte >= 4)
 				even_byte += 1;
 			if (odd_byte >= 4)
@@ -589,8 +579,7 @@ static void _palette_index_to_EL315_data(uint8_t *index_buffer, uint8_t *dst)
 	for (int j = 0; j < EPD_HEIGHT; j += 2) {
 		for (int i = 1280; i < 1680; i++) {
 			uint8_t even_byte = index_buffer[i + j * EPD_WIDTH];
-			uint8_t odd_byte =
-				index_buffer[i + (j + 1) * EPD_WIDTH];
+			uint8_t odd_byte = index_buffer[i + (j + 1) * EPD_WIDTH];
 			if (even_byte >= 4)
 				even_byte += 1;
 			if (odd_byte >= 4)
@@ -602,8 +591,7 @@ static void _palette_index_to_EL315_data(uint8_t *index_buffer, uint8_t *dst)
 	for (int j = 0; j < EPD_HEIGHT; j += 2) {
 		for (int i = 1680; i < 2080; i++) {
 			uint8_t even_byte = index_buffer[i + j * EPD_WIDTH];
-			uint8_t odd_byte =
-				index_buffer[i + (j + 1) * EPD_WIDTH];
+			uint8_t odd_byte = index_buffer[i + (j + 1) * EPD_WIDTH];
 			if (even_byte >= 4)
 				even_byte += 1;
 			if (odd_byte >= 4)
@@ -615,8 +603,7 @@ static void _palette_index_to_EL315_data(uint8_t *index_buffer, uint8_t *dst)
 	for (int j = 0; j < EPD_HEIGHT; j += 2) {
 		for (int i = 2080; i < 2480; i++) {
 			uint8_t even_byte = index_buffer[i + j * EPD_WIDTH];
-			uint8_t odd_byte =
-				index_buffer[i + (j + 1) * EPD_WIDTH];
+			uint8_t odd_byte = index_buffer[i + (j + 1) * EPD_WIDTH];
 			if (even_byte >= 4)
 				even_byte += 1;
 			if (odd_byte >= 4)
@@ -628,8 +615,7 @@ static void _palette_index_to_EL315_data(uint8_t *index_buffer, uint8_t *dst)
 	for (int j = 0; j < EPD_HEIGHT; j += 2) {
 		for (int i = 2480; i < 2560; i++) {
 			uint8_t even_byte = index_buffer[i + j * EPD_WIDTH];
-			uint8_t odd_byte =
-				index_buffer[i + (j + 1) * EPD_WIDTH];
+			uint8_t odd_byte = index_buffer[i + (j + 1) * EPD_WIDTH];
 			if (even_byte >= 4)
 				even_byte += 1;
 			if (odd_byte >= 4)
@@ -671,35 +657,43 @@ static unsigned char setEpdPower(void)
 	unsigned char i, vcomStatus = DONE;
 	unsigned char readTscBuf[2], readPwrBuf[5];
 
+	ESP_LOGI(TAG, "setEpdPower: start");
+
 	//Read TSC
 	epd_io.EPD_IO_CS_Ctrl(0, LOW);
 	epd_io.EPD_IO_ReadCommandData(TSC, &readTscBuf[0], sizeof(readTscBuf));
 	epd_io.EPD_IO_CS_Ctrl(0, HIGH);
+	ESP_LOGI(TAG, "setEpdPower: TSC=0x%02X,0x%02X", readTscBuf[0], readTscBuf[1]);
 	epd_io.EPD_IO_CheckBusy_H();
-	// Serial.printf("1-TSC Data = 0x%02X, 0x%02X \r\n", readTscBuf[0], readTscBuf[1]);
 
 	//PON without the external power
+	ESP_LOGI(TAG, "setEpdPower: send PON");
 	epd_io.EPD_IO_CS_Ctrl(0, LOW);
 	epd_io.EPD_IO_Write_byte(PON);
 	epd_io.EPD_IO_CS_Ctrl(0, HIGH);
 	epd_io.EPD_IO_CheckBusy_H();
+	ESP_LOGI(TAG, "setEpdPower: PON done");
 
 	//Read PWR
 	epd_io.EPD_IO_CS_Ctrl(0, LOW);
 	epd_io.EPD_IO_ReadCommandData(0x9B, &readPwrBuf[0], 4);
 	epd_io.EPD_IO_CS_Ctrl(0, HIGH);
-	// Serial.printf("2-PWR Data = 0x%02X, 0x%02X 0x%02X, 0x%02X \r\n", readPwrBuf[0], readPwrBuf[1], readPwrBuf[2], readPwrBuf[3]);
+	ESP_LOGI(TAG, "setEpdPower: PWR=0x%02X,0x%02X,0x%02X,0x%02X", readPwrBuf[0], readPwrBuf[1], readPwrBuf[2],
+		 readPwrBuf[3]);
 
 	//POF
+	ESP_LOGI(TAG, "setEpdPower: send POF");
 	epd_io.EPD_IO_CS_Ctrl(0, LOW);
 	epd_io.EPD_IO_Write_byte(POF);
 	epd_io.EPD_IO_CS_Ctrl(0, HIGH);
 	epd_io.EPD_IO_CheckBusy_H();
+	ESP_LOGI(TAG, "setEpdPower: POF done");
 
 	//Read VCOM
 	epd_io.EPD_IO_CS_Ctrl(0, LOW);
 	epd_io.EPD_IO_ReadCommandData(0x8A, &readPwrBuf[4], 1);
 	epd_io.EPD_IO_CS_Ctrl(0, HIGH);
+	ESP_LOGI(TAG, "setEpdPower: VCOM=0x%02X", readPwrBuf[4]);
 
 	if (readPwrBuf[4] == 0x00) {
 		ESP_LOGI(TAG, "3-VCOM Data = 0x%02X", readPwrBuf[4]);
@@ -709,8 +703,7 @@ static unsigned char setEpdPower(void)
 		for (i = 0; i < 4; i++) {
 			if (readPwrBuf[i] > 120) {
 				vcomStatus = ERROR;
-				ESP_LOGI(TAG, "4-PWM Data [%d] = 0x%02X", i,
-					 readPwrBuf[4]);
+				ESP_LOGI(TAG, "4-PWM Data [%d] = 0x%02X", i, readPwrBuf[4]);
 				ESP_LOGI(TAG, "Data NG!");
 			}
 		}
@@ -721,27 +714,33 @@ static unsigned char setEpdPower(void)
 			// Serial.printf("5-PWM data and VCOM data are both in range! \r\n");
 		}
 	}
-	vcomStatus = DONE;
+	ESP_LOGI(TAG, "setEpdPower: result vcomStatus=%d", vcomStatus);
 	return vcomStatus;
 }
 
 static void EL315TW1_Update(void)
 {
+	ESP_LOGI(TAG, "EL315TW1_Update: start");
 	ESP_LOGI(TAG, "Turn on Pmic");
 	ist9201.enablePmic();
+	ESP_LOGI(TAG, "EL315TW1_Update: enablePmic done");
 
 	ESP_LOGI(TAG, "PON");
 	epd_io.EPD_IO_CS_Ctrl_All(LOW);
 	epd_io.EPD_IO_Write_byte(PON);
 	epd_io.EPD_IO_CS_Ctrl_All(HIGH);
+	ESP_LOGI(TAG, "EL315TW1_Update: PON sent, waiting busy...");
 	epd_io.EPD_IO_CheckBusy_H();
+	ESP_LOGI(TAG, "EL315TW1_Update: PON done");
 
 	ESP_LOGI(TAG, "DRF");
 	epd_io.EPD_IO_CS_Ctrl_All(LOW);
 	epd_io.DelayMs(10); //30ms
 	epd_io.EPD_IO_WriteCommandData(DRF, DRF_V, sizeof(DRF_V));
 	epd_io.EPD_IO_CS_Ctrl_All(HIGH);
+	ESP_LOGI(TAG, "EL315TW1_Update: DRF sent, waiting busy...");
 	epd_io.EPD_IO_CheckBusy_H();
+	ESP_LOGI(TAG, "EL315TW1_Update: DRF done");
 
 	ESP_LOGI(TAG, "POF");
 	epd_io.EPD_IO_CS_Ctrl_All(LOW);
@@ -751,20 +750,23 @@ static void EL315TW1_Update(void)
 
 	ESP_LOGI(TAG, "Turn Off Pmic");
 	ist9201.PowerOffPMIC();
+	ESP_LOGI(TAG, "EL315TW1_Update: end");
 }
 
 static void _EL315TW1_DisplayFrame(unsigned char *frame_buffer)
 {
+	ESP_LOGI(TAG, "_EL315TW1_DisplayFrame: start");
 	if (setEpdPower() == DONE) {
 		ESP_LOGI(TAG, "Sending Display Data....");
 		for (int i = 0; i < EPD_FRAME_COUNT; i++) {
+			ESP_LOGI(TAG, "  sending CS[%d] data...", i);
 			epd_io.EPD_IO_CS_Ctrl(i, LOW);
 			epd_io.EPD_IO_Write_byte(DTM);
-			epd_io.EPD_IO_WriteDataBytes(frame_buffer,
-						     EPD_FRAME_SIZE);
+			epd_io.EPD_IO_WriteDataBytes(frame_buffer, EPD_FRAME_SIZE);
 			epd_io.EPD_IO_CS_Ctrl(i, HIGH);
 			epd_io.DelayMs(1);
 			frame_buffer += EPD_FRAME_SIZE;
+			ESP_LOGI(TAG, "  CS[%d] done", i);
 		}
 		ESP_LOGI(TAG, "Done.");
 
@@ -772,9 +774,10 @@ static void _EL315TW1_DisplayFrame(unsigned char *frame_buffer)
 
 		ESP_LOGI(TAG, "Display Frame complete.");
 	} else {
-		ESP_LOGI(TAG,
-			 "Display Frame does not work due to setEpdPower() NG.");
+		ESP_LOGI(TAG, "Display Frame does not work due to setEpdPower() NG.");
+		ist9201.PowerOffPMIC();
 	}
+	ESP_LOGI(TAG, "_EL315TW1_DisplayFrame: end");
 }
 
 static void _EL315TW1_Sleep(void)
@@ -784,12 +787,7 @@ static void _EL315TW1_Sleep(void)
 
 static int _EL315TW1_Deinit(void)
 {
-	//epd_io.EPD_IO_Power_Off();
-	// Serial.println("EL315TW1 Power Off.");
-	//epd_io.EPD_IO_Deinitialize();
-	// Serial.println("EL315TW1 Deinitialize.");
-	//ist9201.IfDeinit();
-	//TODO
+	_EPD_IO_Deinitialize();
 	return 0;
 }
 
@@ -810,8 +808,7 @@ static int EL315TW1_CheckDriverICStatus(void)
 		epd_io.EPD_IO_CS_Ctrl(csx, LOW);
 		epd_io.EPD_IO_ReadCommandData(cmd, buf, sizeof(buf));
 		epd_io.EPD_IO_CS_Ctrl(csx, HIGH);
-		ESP_LOGI(TAG, "Driver IC [%d] = 0x%02X 0x%02X 0x%02X", csx,
-			 buf[0], buf[1], buf[2]);
+		ESP_LOGI(TAG, "Driver IC [%d] = 0x%02X 0x%02X 0x%02X", csx, buf[0], buf[1], buf[2]);
 
 		if ((buf[0] & 0x01) == 0x01) {
 			ESP_LOGI(TAG, "Driver IC [%d] is ready.", csx);
@@ -826,76 +823,105 @@ static int EL315TW1_CheckDriverICStatus(void)
 
 int EL315TW1_Init(void)
 {
+	ESP_LOGI(TAG, "EL315TW1_Init: start");
 	ist9201.IfInit();
+	ESP_LOGI(TAG, "EL315TW1_Init: PMIC IfInit done");
 	// Serial.println("EL315TW1 Initialize.");
 	epd_io.EPD_IO_Initialize();
 	// Serial.println("EL315TW1 Power On.");
 	epd_io.EPD_IO_Power_On();
 
 	epd_io.EPD_IO_Reset();
+	ESP_LOGI(TAG, "EL315TW1_Init: after reset, BUSY_PIN=%d", gpio_get_level(BUSY_PIN));
+
 	epd_io.EPD_IO_CheckBusy_H();
 
+	// === DIAG: BUSY 就绪后读 0xF2 检查 DriverIC 状态 ===
+	ESP_LOGI(TAG, "DIAG: reading DriverIC 0xF2 after BUSY ready...");
+	for (int cs = 0; cs < 8; cs++) {
+		unsigned char buf[3] = { 0 };
+		epd_io.EPD_IO_CS_Ctrl(cs, LOW);
+		epd_io.EPD_IO_ReadCommandData(0xF2, buf, 3);
+		epd_io.EPD_IO_CS_Ctrl(cs, HIGH);
+		ESP_LOGI(TAG, "  DIAG DriverIC [%d] = 0x%02X 0x%02X 0x%02X", cs, buf[0], buf[1], buf[2]);
+	}
+	// === DIAG end ===
+
+	ESP_LOGI(TAG, "EL315TW1_Init: checking DriverIC status...");
+	int retry = 0;
 	do {
 		vTaskDelay(pdMS_TO_TICKS(1000));
+		retry++;
+		if (retry > 10) {
+			ESP_LOGE(TAG, "EL315TW1_Init: DriverIC status retry timeout!");
+			break;
+		}
 	} while (EL315TW1_CheckDriverICStatus() != DONE);
+	ESP_LOGI(TAG, "EL315TW1_Init: DriverIC status checked, retry=%d", retry);
+
+	ESP_LOGI(TAG, "EL315TW1_Init: sending init commands...");
 
 	epd_io.EPD_IO_CS_Ctrl_All(LOW);
-	epd_io.EPD_IO_WriteCommandData(VCOM_WOUT_EN, VCOM_WOUT_EN_V,
-				       sizeof(VCOM_WOUT_EN_V));
+	epd_io.EPD_IO_WriteCommandData(VCOM_WOUT_EN, VCOM_WOUT_EN_V, sizeof(VCOM_WOUT_EN_V));
 	epd_io.EPD_IO_CS_Ctrl_All(HIGH);
+	ESP_LOGI(TAG, "  VCOM_WOUT_EN done");
 
 	epd_io.EPD_IO_CS_Ctrl_All(LOW);
 	epd_io.EPD_IO_WriteCommandData(TM_TCON, TM_TCON_V, sizeof(TM_TCON_V));
 	epd_io.EPD_IO_CS_Ctrl_All(HIGH);
+	ESP_LOGI(TAG, "  TM_TCON done");
 
 	epd_io.EPD_IO_CS_Ctrl_All(LOW);
 	epd_io.EPD_IO_WriteCommandData(CMD66, CMD66_V, sizeof(CMD66_V));
 	epd_io.EPD_IO_CS_Ctrl_All(HIGH);
+	ESP_LOGI(TAG, "  CMD66 done");
 
 	epd_io.EPD_IO_CS_Ctrl_All(LOW);
 	epd_io.EPD_IO_WriteCommandData(PSR, PSR_V, sizeof(PSR_V));
 	epd_io.EPD_IO_CS_Ctrl_All(HIGH);
+	ESP_LOGI(TAG, "  PSR done");
 
 	epd_io.EPD_IO_CS_Ctrl_All(LOW);
 	epd_io.EPD_IO_WriteCommandData(PWR, PWR_V, sizeof(PWR_V));
 	epd_io.EPD_IO_CS_Ctrl_All(HIGH);
+	ESP_LOGI(TAG, "  PWR done");
 
 	epd_io.EPD_IO_CS_Ctrl_All(LOW);
 	epd_io.EPD_IO_WriteCommandData(PLL, PLL_V, sizeof(PLL_V));
 	epd_io.EPD_IO_CS_Ctrl_All(HIGH);
+	ESP_LOGI(TAG, "  PLL done");
 
 	epd_io.EPD_IO_CS_Ctrl_All(LOW);
 	epd_io.EPD_IO_WriteCommandData(CDI, CDI_V, sizeof(CDI_V));
 	epd_io.EPD_IO_CS_Ctrl_All(HIGH);
+	ESP_LOGI(TAG, "  CDI done");
 
 	epd_io.EPD_IO_CS_Ctrl_All(LOW);
 	epd_io.EPD_IO_WriteCommandData(TCON, TCON_V, sizeof(TCON_V));
 	epd_io.EPD_IO_CS_Ctrl_All(HIGH);
+	ESP_LOGI(TAG, "  TCON done");
 
 	epd_io.EPD_IO_CS_Ctrl_All(LOW);
 	epd_io.EPD_IO_WriteCommandData(TRES, TRES_V, sizeof(TRES_V));
 	epd_io.EPD_IO_CS_Ctrl_All(HIGH);
+	ESP_LOGI(TAG, "  TRES done");
 
 	epd_io.EPD_IO_CS_Ctrl_All(LOW);
 	epd_io.EPD_IO_WriteCommandData(EN_BUF, EN_BUF_V, sizeof(EN_BUF_V));
 	epd_io.EPD_IO_CS_Ctrl_All(HIGH);
+	ESP_LOGI(TAG, "  EN_BUF done");
 
 	epd_io.EPD_IO_CS_Ctrl_All(LOW);
 	epd_io.EPD_IO_WriteCommandData(PWS, PWS_V, sizeof(PWS_V));
 	epd_io.EPD_IO_CS_Ctrl_All(HIGH);
-
-	// epd_io.EPD_IO_CS_Ctrl_All(LOW);
-	// epd_io.EPD_IO_WriteCommandData(SPIM, SPIM_V, sizeof(SPIM_V));
-	// epd_io.EPD_IO_CS_Ctrl_All(HIGH);
+	ESP_LOGI(TAG, "  PWS done");
 
 	epd_io.EPD_IO_CS_Ctrl_All(LOW);
 	epd_io.EPD_IO_WriteCommandData(CCSET, CCSET_V, sizeof(CCSET_V));
 	epd_io.EPD_IO_CS_Ctrl_All(HIGH);
-	// }
-	// if (EL315TW1_CheckDriverICStatus() == DONE) {
-	// }
-	// Serial.println("EL315TW1 Initialize OK.");
-	/* EL315TW1 hardware init end */
+	ESP_LOGI(TAG, "  CCSET done");
+
+	ESP_LOGI(TAG, "EL315TW1_Init: complete");
 	return 0;
 }
 
@@ -920,9 +946,11 @@ static void packed_to_EL315_frames(uint8_t *packed, uint8_t *dst)
 				uint8_t pe = packed[x / 2 + y * half_w];
 				uint8_t po = packed[x / 2 + (y + 1) * half_w];
 				uint8_t pix_even = (x & 1) ? (pe & 0x0F) : ((pe >> 4) & 0x0F);
-				uint8_t pix_odd  = (x & 1) ? (po & 0x0F) : ((po >> 4) & 0x0F);
-				if (pix_even >= 4) pix_even++;
-				if (pix_odd  >= 4) pix_odd++;
+				uint8_t pix_odd = (x & 1) ? (po & 0x0F) : ((po >> 4) & 0x0F);
+				if (pix_even >= 4)
+					pix_even++;
+				if (pix_odd >= 4)
+					pix_odd++;
 				*dst++ = (pix_even << 4) | pix_odd;
 			}
 			memset(dst, 0, pad);
@@ -933,26 +961,34 @@ static void packed_to_EL315_frames(uint8_t *packed, uint8_t *dst)
 
 static int display_index_buff(uint8_t *buff, size_t size)
 {
+	uint32_t t0 = esp_log_timestamp();
 	ESP_LOGI(TAG, "display_index_buff size %d", size);
 
 	EL315TW1_Init();
+	ESP_LOGI(TAG, "display_index_buff: EL315TW1_Init took %u ms", esp_log_timestamp() - t0);
 
 	dst_frame_buffer = (uint8_t *)heap_caps_malloc(EPD_FRAME_BUFFER_SIZE, MALLOC_CAP_SPIRAM);
 	if (dst_frame_buffer == NULL) {
 		ESP_LOGE(TAG, "dst_frame_buffer malloc fail");
+		_EPD_IO_Deinitialize();
 		return ESP_FAIL;
 	}
+	ESP_LOGI(TAG, "display_index_buff: malloc done, heap free=%d", heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
 
+	uint32_t t1 = esp_log_timestamp();
 	packed_to_EL315_frames(buff, dst_frame_buffer);
+	ESP_LOGI(TAG, "display_index_buff: packed_to_EL315_frames took %u ms", esp_log_timestamp() - t1);
 
+	uint32_t t2 = esp_log_timestamp();
 	epd.EL315TW1_DisplayFrame(dst_frame_buffer);
+	ESP_LOGI(TAG, "display_index_buff: EL315TW1_DisplayFrame took %u ms", esp_log_timestamp() - t2);
 
 	free(dst_frame_buffer);
 	dst_frame_buffer = NULL;
 
 	_EPD_IO_Deinitialize();
 
-	ESP_LOGI(TAG, "display_index_buff end");
+	ESP_LOGI(TAG, "display_index_buff end, total %u ms", esp_log_timestamp() - t0);
 	return 0;
 }
 
@@ -960,39 +996,22 @@ static int initial(void)
 {
 	ESP_LOGI(TAG, "initial start");
 
-	//dst_frame_buffer = (uint8_t *)heap_caps_malloc(EPD_FRAME_BUFFER_SIZE,
-	//					       MALLOC_CAP_SPIRAM);
-	//if (dst_frame_buffer == NULL) {
-	//	ESP_LOGI(TAG,
-	//		 "ERROR: memory allcation failed! [dst_frame_buffer]");
-	//}
-
-	//dst_image_buffer =
-	//	(uint8_t *)heap_caps_malloc(EPD_IMAGE_SIZE, MALLOC_CAP_SPIRAM);
-	//if (dst_image_buffer == NULL) {
-	//	ESP_LOGI(TAG,
-	//		 "ERROR: memory allcation failed! [dst_frame_buffer]");
-	//}
-	//
-	//ESP_LOGI(TAG, "Heap Caps after malloc: %d Bytes\n",
-	//	 heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
-
 	delay_ms(3000);
 
 	ist9201.DetectHWVersion();
+	ESP_LOGI(TAG, "initial: HW version detected");
 
 	EL315TW1_Init();
+	ESP_LOGI(TAG, "initial: EL315TW1_Init done");
 
 	return 0;
 }
 
 static int fill_index_buffer(uint8_t *inbuff)
 {
-	dst_frame_buffer = (uint8_t *)heap_caps_malloc(EPD_FRAME_BUFFER_SIZE,
-						       MALLOC_CAP_SPIRAM);
+	dst_frame_buffer = (uint8_t *)heap_caps_malloc(EPD_FRAME_BUFFER_SIZE, MALLOC_CAP_SPIRAM);
 	if (dst_frame_buffer == NULL) {
-		ESP_LOGI(TAG,
-			 "ERROR: memory allcation failed! [dst_frame_buffer]");
+		ESP_LOGI(TAG, "ERROR: memory allcation failed! [dst_frame_buffer]");
 	}
 
 	epd.palette_index_to_EL315_data(inbuff, dst_frame_buffer);
@@ -1034,3 +1053,126 @@ YEPD YMS25601440_3150AAX_E6 = {
 	.pin_d = { 13, -1 },
 	.sections = { { .index_to_section = NULL } },
 };
+
+static void _EL315TW1_DisplayColor(unsigned char color, unsigned char *frame_buffer)
+{
+	memset(frame_buffer, color, EPD_FRAME_SIZE);
+
+	if (setEpdPower() == DONE) {
+		epd_io.EPD_IO_CS_Ctrl_All(LOW);
+		epd_io.EPD_IO_Write_byte(DTM);
+		epd_io.EPD_IO_WriteDataBytes(frame_buffer, EPD_FRAME_SIZE);
+		epd_io.EPD_IO_CS_Ctrl_All(HIGH);
+
+		EL315TW1_Update();
+		ESP_LOGI(TAG, "Display Color complete.");
+	} else {
+		ESP_LOGI(TAG, "Display Frame does not work due to setEpdPower() NG.");
+	}
+}
+
+static void _EL315TW1_DisplayColorBar(unsigned char *frame_buffer)
+{
+	memset(frame_buffer + EPD_FRAME_OFFSET_0, RED, EPD_FRAME_SIZE);
+	memset(frame_buffer + EPD_FRAME_OFFSET_1, GREEN, EPD_FRAME_SIZE);
+	memset(frame_buffer + EPD_FRAME_OFFSET_2, BLUE, EPD_FRAME_SIZE);
+	memset(frame_buffer + EPD_FRAME_OFFSET_3, BLACK, EPD_FRAME_SIZE);
+	memset(frame_buffer + EPD_FRAME_OFFSET_4, BLACK, EPD_FRAME_SIZE);
+	memset(frame_buffer + EPD_FRAME_OFFSET_5, YELLOW, EPD_FRAME_SIZE);
+	memset(frame_buffer + EPD_FRAME_OFFSET_6, WHITE, EPD_FRAME_SIZE);
+	memset(frame_buffer + EPD_FRAME_OFFSET_7, WHITE, EPD_FRAME_SIZE);
+
+	_EL315TW1_DisplayFrame(frame_buffer);
+}
+
+void test_yms25601440_3150aax(void)
+{
+	ESP_LOGI(TAG, "=== 31.5 standalone color cycle test ===");
+
+	dst_frame_buffer = (uint8_t *)heap_caps_malloc(EPD_FRAME_BUFFER_SIZE, MALLOC_CAP_SPIRAM);
+	if (dst_frame_buffer == NULL) {
+		ESP_LOGE(TAG, "ERROR: memory allocation failed! [dst_frame_buffer]");
+		return;
+	}
+	ESP_LOGI(TAG, "Heap Caps: %d Bytes", heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+
+	ist9201.DetectHWVersion();
+
+	vTaskDelay(pdMS_TO_TICKS(3000));
+
+	ESP_LOGI(TAG, "EL315TW1 Demo Start.");
+	EL315TW1_Init();
+	ESP_LOGI(TAG, "EL315TW1 Init Done.");
+	_EL315TW1_DisplayColor(WHITE, dst_frame_buffer);
+	ESP_LOGI(TAG, "EL315TW1 Display WHITE Done.");
+	_EL315TW1_Deinit();
+	ESP_LOGI(TAG, "EL315TW1_Deinit Done.");
+	vTaskDelay(pdMS_TO_TICKS(5000));
+
+	ESP_LOGI(TAG, "EL315TW1 Demo Start.");
+	EL315TW1_Init();
+	ESP_LOGI(TAG, "EL315TW1 Init Done.");
+	_EL315TW1_DisplayColor(RED, dst_frame_buffer);
+	ESP_LOGI(TAG, "EL315TW1 Display RED Done.");
+	_EL315TW1_Deinit();
+	ESP_LOGI(TAG, "EL315TW1_Deinit Done.");
+	vTaskDelay(pdMS_TO_TICKS(5000));
+
+	ESP_LOGI(TAG, "EL315TW1 Demo Start.");
+	EL315TW1_Init();
+	ESP_LOGI(TAG, "EL315TW1 Init Done.");
+	_EL315TW1_DisplayColor(YELLOW, dst_frame_buffer);
+	ESP_LOGI(TAG, "EL315TW1 Display YELLOW Done.");
+	_EL315TW1_Deinit();
+	ESP_LOGI(TAG, "EL315TW1_Deinit Done.");
+	vTaskDelay(pdMS_TO_TICKS(5000));
+
+	ESP_LOGI(TAG, "EL315TW1 Demo Start.");
+	EL315TW1_Init();
+	ESP_LOGI(TAG, "EL315TW1 Init Done.");
+	_EL315TW1_DisplayColor(BLUE, dst_frame_buffer);
+	ESP_LOGI(TAG, "EL315TW1 Display BLUE Done.");
+	_EL315TW1_Deinit();
+	ESP_LOGI(TAG, "EL315TW1_Deinit Done.");
+	vTaskDelay(pdMS_TO_TICKS(5000));
+
+	ESP_LOGI(TAG, "EL315TW1 Demo Start.");
+	EL315TW1_Init();
+	ESP_LOGI(TAG, "EL315TW1 Init Done.");
+	_EL315TW1_DisplayColor(BLACK, dst_frame_buffer);
+	ESP_LOGI(TAG, "EL315TW1 Display BLACK Done.");
+	_EL315TW1_Deinit();
+	ESP_LOGI(TAG, "EL315TW1_Deinit Done.");
+	vTaskDelay(pdMS_TO_TICKS(5000));
+
+	ESP_LOGI(TAG, "EL315TW1 Demo Start.");
+	EL315TW1_Init();
+	ESP_LOGI(TAG, "EL315TW1 Init Done.");
+	_EL315TW1_DisplayColor(GREEN, dst_frame_buffer);
+	ESP_LOGI(TAG, "EL315TW1 Display GREEN Done.");
+	_EL315TW1_Deinit();
+	ESP_LOGI(TAG, "EL315TW1_Deinit Done.");
+	vTaskDelay(pdMS_TO_TICKS(5000));
+
+	ESP_LOGI(TAG, "EL315TW1 Demo Start.");
+	EL315TW1_Init();
+	ESP_LOGI(TAG, "EL315TW1 Init Done.");
+	_EL315TW1_DisplayColorBar(dst_frame_buffer);
+	ESP_LOGI(TAG, "EL315TW1 Display Color Bar Done.");
+	_EL315TW1_Deinit();
+	ESP_LOGI(TAG, "EL315TW1_Deinit Done.");
+	vTaskDelay(pdMS_TO_TICKS(5000));
+
+	ESP_LOGI(TAG, "EL315TW1 Demo Start.");
+	EL315TW1_Init();
+	ESP_LOGI(TAG, "EL315TW1 Init Done.");
+	_EL315TW1_DisplayColor(WHITE, dst_frame_buffer);
+	ESP_LOGI(TAG, "EL315TW1 Display WHITE Done.");
+	_EL315TW1_Deinit();
+	ESP_LOGI(TAG, "EL315TW1_Deinit Done.");
+
+	free(dst_frame_buffer);
+	dst_frame_buffer = NULL;
+
+	ESP_LOGI(TAG, "=== Color cycle test complete ===");
+}
