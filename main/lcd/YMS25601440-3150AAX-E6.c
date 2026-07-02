@@ -964,6 +964,13 @@ static int display_index_buff(uint8_t *buff, size_t size)
 	uint32_t t0 = esp_log_timestamp();
 	ESP_LOGI(TAG, "display_index_buff size %d", size);
 
+	static bool hw_detected = false;
+	if (!hw_detected) {
+		ist9201.DetectHWVersion();
+		vTaskDelay(pdMS_TO_TICKS(3000));
+		hw_detected = true;
+	}
+
 	EL315TW1_Init();
 	ESP_LOGI(TAG, "display_index_buff: EL315TW1_Init took %u ms", esp_log_timestamp() - t0);
 

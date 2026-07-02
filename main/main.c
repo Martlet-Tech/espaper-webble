@@ -145,8 +145,6 @@ void app_main(void)
 	}
 #endif
 	//gyepd->test();
-	test_yms25601440_3150aax();
-	ESP_LOGI(TAG, "test finish");
 
 	gatts_main();
 
