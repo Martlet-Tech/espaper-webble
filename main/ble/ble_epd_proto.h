@@ -26,6 +26,7 @@ typedef enum {
 	BLE_EPD_CMD_SET_WORKING_MODE = 0x09,
 	BLE_EPD_CMD_SET_CUSTOM_NAME = 0x0A,
 	BLE_EPD_CMD_QUERY_PROGRESS = 0x0B,
+	BLE_EPD_CMD_WIFI_SCAN = 0x0C,
 } ble_epd_cmd_t;
 
 typedef enum {

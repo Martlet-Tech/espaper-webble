@@ -7,6 +7,9 @@
 
 #include <stdlib.h>
 #include <string.h>
+#ifndef MIN
+#define MIN(a,b) (((a) < (b)) ? (a) : (b))
+#endif
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -33,6 +36,25 @@ uint32_t received_bytes = 0;
 static uint8_t *s_ble_rx_buffer;
 static ble_epd_cmd_t s_pending_read_cmd;
 static uint32_t s_packet_log_counter;
+
+/* WiFi 扫描结果（互斥保护） */
+static SemaphoreHandle_t s_scan_mutex = NULL;
+static char *s_wifi_scan_result = NULL;
+static bool s_wifi_scan_done = false;
+
+static void wifi_scan_task(void *pv)
+{
+	char *json = wifi_scan_ap();
+	if (xSemaphoreTake(s_scan_mutex, portMAX_DELAY) == pdTRUE) {
+		if (s_wifi_scan_result) free(s_wifi_scan_result);
+		s_wifi_scan_result = json;
+		s_wifi_scan_done = true;
+		xSemaphoreGive(s_scan_mutex);
+	} else {
+		free(json);
+	}
+	vTaskDelete(NULL);
+}
 
 static void display_clear_task(void *pvParameter)
 {
@@ -155,6 +177,28 @@ void ble_epd_proto_on_char_read(esp_gatt_if_t gatts_if, uint16_t conn_id, uint16
 	case BLE_EPD_CMD_QUERY_PROGRESS:
 		proto_read_progress(gatts_if, conn_id, trans_id, attr_handle, read_offset);
 		break;
+	case BLE_EPD_CMD_WIFI_SCAN: {
+		esp_gatt_rsp_t rsp;
+		memset(&rsp, 0, sizeof(rsp));
+		rsp.attr_value.handle = attr_handle;
+		rsp.attr_value.offset = read_offset;
+		rsp.attr_value.auth_req = ESP_GATT_AUTH_REQ_NONE;
+
+		if (s_scan_mutex && xSemaphoreTake(s_scan_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+			if (s_wifi_scan_done && s_wifi_scan_result) {
+				uint16_t len = strlen(s_wifi_scan_result);
+				rsp.attr_value.len = MIN(len, 499);
+				memcpy(rsp.attr_value.value, s_wifi_scan_result, rsp.attr_value.len);
+			} else {
+				const char *p = "{\"pending\":1}";
+				rsp.attr_value.len = strlen(p);
+				memcpy(rsp.attr_value.value, p, rsp.attr_value.len);
+			}
+			xSemaphoreGive(s_scan_mutex);
+		}
+		esp_ble_gatts_send_response(gatts_if, conn_id, trans_id, ESP_GATT_OK, &rsp);
+		break;
+	}
 	default:
 		break;
 	}
@@ -251,13 +295,13 @@ static void proto_write_end_data(void)
 static void proto_write_set_wifi(const uint8_t *data, uint16_t len)
 {
 	if (len < 3) {
-		ESP_LOGE(TAG, "WiFi Data too short (min 3 bytes)");
+		ESP_LOGV(TAG, "WiFi data too short (min 3 bytes) — query frame, ignored");
 		return;
 	}
 	uint8_t ssid_len = data[1];
 	uint8_t pwd_len = data[2];
 	if (len < (3u + ssid_len + pwd_len)) {
-		ESP_LOGE(TAG, "Invalid packet length: need %u, got %u", 3u + ssid_len + pwd_len, len);
+		ESP_LOGE(TAG, "WiFi packet length mismatch: need %u, got %u", 3u + ssid_len + pwd_len, len);
 		return;
 	}
 	char ssid[33] = { 0 };
@@ -344,6 +388,14 @@ void ble_epd_proto_on_char_write(esp_gatt_if_t gatts_if, uint16_t conn_id, uint1
 		} else {
 			ESP_LOGW(TAG, "Invalid length for CMD_SET_WORKING_MODE");
 		}
+		break;
+
+	case BLE_EPD_CMD_WIFI_SCAN:
+		ESP_LOGI(TAG, "CMD_WIFI_SCAN");
+		if (s_scan_mutex == NULL)
+			s_scan_mutex = xSemaphoreCreateMutex();
+		s_wifi_scan_done = false;
+		xTaskCreate(wifi_scan_task, "wifi_scan", 4096, NULL, 3, NULL);
 		break;
 
 	case BLE_EPD_CMD_SET_CUSTOM_NAME:

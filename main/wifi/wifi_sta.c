@@ -1,4 +1,7 @@
 #include <string.h>
+#ifndef MIN
+#define MIN(a,b) (((a) < (b)) ? (a) : (b))
+#endif
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/event_groups.h"
@@ -15,26 +18,32 @@
 #include "display_manager.h"
 #include "yepd.h"
 #include "esp_gap_ble_api.h"
+#include "cJSON.h"
 
 bool g_wifi_needs_init = false;
 
 static const char *TAG = "WIFI_STA";
-char wifi_ip_address[16] = "0.0.0.0"; // 用于存储 IP 字符串
+char wifi_ip_address[16] = "0.0.0.0";
 
 #define MAX_IMAGE_SIZE (800 * 1024)
-uint8_t *img_buffer = NULL; // 指向 PSRAM 的指针
-static httpd_handle_t server_handle = NULL; // 全局或静态变量，用于管理服务器
+uint8_t *img_buffer = NULL;
+static httpd_handle_t server_handle = NULL;
+
+static bool s_wifi_inited = false;
+static bool s_scan_mode = false;
 
 static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
 {
 	if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
-		esp_wifi_connect();
+		if (!s_scan_mode) esp_wifi_connect();
 	} else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
-		ESP_LOGI(TAG, "Disconnected. Retrying to connect...");
-		strcpy(wifi_ip_address, "0.0.0.0"); // 断开连接时清空 IP
+		if (!s_scan_mode) {
+			ESP_LOGI(TAG, "Disconnected. Retrying to connect...");
+			strcpy(wifi_ip_address, "0.0.0.0");
 
-		vTaskDelay(pdMS_TO_TICKS(250));
-		esp_wifi_connect();
+			vTaskDelay(pdMS_TO_TICKS(250));
+			esp_wifi_connect();
+		}
 	} else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
 		ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
 		esp_ip4addr_ntoa(&event->ip_info.ip, wifi_ip_address, sizeof(wifi_ip_address));
@@ -46,61 +55,118 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
 	}
 }
 
+bool wifi_ensure_init(void)
+{
+	if (s_wifi_inited) return true;
+
+	esp_netif_init();
+	esp_err_t err = esp_event_loop_create_default();
+	if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+		ESP_LOGE(TAG, "event loop create failed: %s", esp_err_to_name(err));
+		return false;
+	}
+	esp_netif_create_default_wifi_sta();
+
+	wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+	ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+
+	ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
+							    &wifi_event_handler, NULL, NULL));
+	ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP,
+							    &wifi_event_handler, NULL, NULL));
+
+	s_wifi_inited = true;
+	return true;
+}
+
+char* wifi_scan_ap(void)
+{
+	if (!wifi_ensure_init()) return strdup("[]");
+
+	s_scan_mode = true;
+
+	wifi_ap_record_t ap_info;
+	bool was_connected = (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK);
+
+	esp_wifi_disconnect();
+	vTaskDelay(pdMS_TO_TICKS(200));
+
+	ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+	esp_err_t ret = esp_wifi_start();
+	if (ret != ESP_OK && ret != ESP_ERR_WIFI_STATE) {
+		ESP_LOGE(TAG, "wifi start failed: %s", esp_err_to_name(ret));
+		s_scan_mode = false;
+		return strdup("[]");
+	}
+	vTaskDelay(pdMS_TO_TICKS(100));
+
+	esp_err_t err = esp_wifi_scan_start(NULL, true);
+	if (err != ESP_OK) {
+		ESP_LOGE(TAG, "scan start failed: %s", esp_err_to_name(err));
+		s_scan_mode = false;
+		return strdup("[]");
+	}
+
+	uint16_t ap_count = 0;
+	esp_wifi_scan_get_ap_num(&ap_count);
+	uint16_t n = MIN(ap_count, 10);
+	wifi_ap_record_t *ap = malloc(n * sizeof(wifi_ap_record_t));
+	if (!ap) { s_scan_mode = false; return strdup("[]"); }
+
+	esp_wifi_scan_get_ap_records(&n, ap);
+
+	cJSON *root = cJSON_CreateArray();
+	for (int i = 0; i < n; i++) {
+		cJSON *entry = cJSON_CreateArray();
+		cJSON_AddItemToArray(entry, cJSON_CreateString((char*)ap[i].ssid));
+		cJSON_AddItemToArray(entry, cJSON_CreateNumber(ap[i].rssi));
+		cJSON_AddItemToArray(entry, cJSON_CreateNumber(ap[i].authmode));
+		cJSON_AddItemToArray(root, entry);
+	}
+	char *json = cJSON_PrintUnformatted(root);
+	cJSON_Delete(root);
+	free(ap);
+
+	s_scan_mode = false;
+
+	if (was_connected) {
+		ESP_LOGI(TAG, "Scan done, reconnecting...");
+		esp_wifi_connect();
+	}
+
+	return json;
+}
+
 void wifi_init_sta(const char *ssid, const char *pass)
 {
-	static bool is_initialized = false;
-
 	static bool is_started = false;
 
-	// 1. 如果已经启动过，先停止，防止配置冲突和瞬时大电流叠加
 	if (is_started) {
 		ESP_LOGI(TAG, "WiFi already started, stopping for reconfiguration...");
 		esp_wifi_disconnect();
 		esp_wifi_stop();
 		is_started = false;
-		vTaskDelay(pdMS_TO_TICKS(100)); // 给硬件一点喘息时间
+		vTaskDelay(pdMS_TO_TICKS(100));
 	}
 
-	// 2. 基础初始化（整个生命周期只做一次）
-	if (!is_initialized) {
-		esp_netif_init();
-		if (esp_event_loop_create_default() != ESP_OK) {
-			ESP_LOGW(TAG, "Event loop already exists.");
-		}
-		esp_netif_create_default_wifi_sta();
+	wifi_ensure_init();
 
-		wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-		ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-
-		ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler,
-								    NULL, NULL));
-		ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler,
-								    NULL, NULL));
-		is_initialized = true;
-	}
-
-	// 3. 配置 WiFi 参数
 	wifi_config_t wifi_config = { 0 };
 	strncpy((char *)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid));
 	strncpy((char *)wifi_config.sta.password, pass, sizeof(wifi_config.sta.password));
 	wifi_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
-
-	// 💡 关键：开启快速扫描或特定信道扫描可以减少 RF 工作时间，降低功耗
 	wifi_config.sta.scan_method = WIFI_FAST_SCAN;
 
 	ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
 	ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
 
-	esp_ble_gap_stop_advertising(); // 需要 #include "esp_gap_ble_api.h"
+	esp_ble_gap_stop_advertising();
 	vTaskDelay(pdMS_TO_TICKS(50));
 
-	// 4. 启动 WiFi
 	ESP_LOGI(TAG, "Starting WiFi and connecting to SSID:%s...", ssid);
 	esp_err_t ret = esp_wifi_start();
 	if (ret == ESP_OK) {
 		is_started = true;
-		// 💡 绝招：限制发射功率。80 代表 20dBm（最大），可以试着降到 50-60 (12.5dBm - 15dBm)
-		// 这能显著降低瞬间峰值电流，防止 Brownout 重启
 		esp_wifi_set_max_tx_power(80);
 		esp_wifi_connect();
 	} else {
@@ -169,6 +235,7 @@ esp_err_t epd_data_post_handler(httpd_req_t *req)
 
 	// 3. 数据接收函数里的“跨域”补充
 	httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+	httpd_resp_set_hdr(req, "Access-Control-Allow-Private-Network", "true");
 	httpd_resp_sendstr(req, "Data received successfully!");
 
 	// 3. 可以在这里通知电子纸驱动去刷新 img_buffer 里的数据
@@ -183,6 +250,7 @@ esp_err_t http_options_handler(httpd_req_t *req)
 	httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
 	httpd_resp_set_hdr(req, "Access-Control-Allow-Methods", "POST, GET, OPTIONS");
 	httpd_resp_set_hdr(req, "Access-Control-Allow-Headers", "Content-Type");
+	httpd_resp_set_hdr(req, "Access-Control-Allow-Private-Network", "true");
 	httpd_resp_send(req, NULL, 0);
 	return ESP_OK;
 }

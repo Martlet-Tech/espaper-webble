@@ -19,6 +19,18 @@ void wifi_init_sta(const char *ssid, const char *pass);
  */
 void wifi_auto_reconnect(void);
 
+/**
+ * @brief 确保 WiFi 底层已初始化（netif + event loop + wifi），可安全重入
+ * @return true 初始化成功
+ */
+bool wifi_ensure_init(void);
+
+/**
+ * @brief 执行一次完整的 WiFi 扫描，返回紧凑 JSON 数组（caller free）
+ * @return JSON 字符串如 [["SSID",-65,3],...]，失败返回 "[]"
+ */
+char* wifi_scan_ap(void);
+
 httpd_handle_t start_web_server(void);
 
 #endif
