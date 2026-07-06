@@ -422,6 +422,9 @@ void ble_epd_proto_on_char_write(esp_gatt_if_t gatts_if, uint16_t conn_id, uint1
 		}
 		break;
 
+	case BLE_EPD_CMD_QUERY_PROGRESS:
+		break;
+
 	default:
 		ESP_LOGW(TAG, "unknown cmd 0x%02x", data[0]);
 		break;
